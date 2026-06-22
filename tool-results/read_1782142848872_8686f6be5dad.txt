@@ -1,0 +1,998 @@
+     1→You are a world-class Principal Software Architect, Enterprise SaaS Product Designer, Payroll Systems Architect, Excel Workbook Import Engineer, Rules Engine Architect, Compensation Logic Specialist, Audit & Controls Architect, PDF Payslip Generation Expert, and Executive Logistics Dashboard Designer.
+     2→
+     3→Build a COMPLETE, PRODUCTION-READY, ULTRA-COMPREHENSIVE WEB SALARY SYSTEM for a logistics company.
+     4→
+     5→This system must be designed as a premium 2026 enterprise SaaS payroll and operations platform.
+     6→
+     7→The system must process a recurring monthly Excel workbook upload, calculate salaries for all drivers automatically, support dashboard analytics and premium PDF payslips, and most importantly: ALL CALCULATION RULES MUST BE EDITABLE FROM ONE CENTRAL PLACE.
+     8→
+     9→This is a non-negotiable core requirement:
+    10→The user must be able to edit all payroll calculation rules from one single centralized Rules Control Center, without changing code, formulas, parser logic, or uploaded workbook structure.
+    11→
+    12→The system must support multiple salary calculation strategies selectable by the admin from the Rules Control Center, including:
+    13→- Days-Prorated Salary Mode
+    14→- Orders-Based Salary Mode
+    15→- Future Hybrid Mode placeholder
+    16→
+    17→The system must also support Traffic Violations / Traffic Tickets as a configurable deduction that appears in payroll results and on the payslip.
+    18→
+    19→==================================================
+    20→1. PRIMARY PRODUCT GOAL
+    21→==================================================
+    22→
+    23→Build a web-based Salary Engine where:
+    24→
+    25→- the admin first defines or edits all salary calculation rules from one place
+    26→- the admin chooses which salary calculation mode is active
+    27→- then the user uploads the full monthly workbook
+    28→- the system validates the workbook
+    29→- the system parses all needed sheets
+    30→- the system joins and normalizes the data
+    31→- the system applies the currently active rules automatically
+    32→- the system calculates salary results for all drivers in one run
+    33→- the system shows exceptions, dashboard, analytics, and payslips
+    34→- the system supports print, PDF, and bulk export
+    35→
+    36→Manual raw mapping must NOT be the standard workflow.
+    37→Workbook upload must be the standard monthly workflow.
+    38→Rules editing must be centralized in one unified admin control center.
+    39→
+    40→==================================================
+    41→2. REAL MONTHLY WORKBOOK STRUCTURE
+    42→==================================================
+    43→
+    44→The recurring uploaded workbook follows the real operational structure of this file family:
+    45→nokhaba_tatweer_ftr_Invoice-Issue-May-2026_with_names_fixed.xlsx
+    46→
+    47→The workbook contains these main sheets:
+    48→- RLVL
+    49→- FTR Cost - May 2026 V.3
+    50→- WR
+    51→- Car Rental
+    52→
+    53→Use them as follows:
+    54→
+    55→A. RLVL = primary rider-level payroll source
+    56→Use fields such as:
+    57→- riderid -
+    58→- Name
+    59→- Contract Name
+    60→- Sum of completedorders -
+    61→- Sum of citypayment -
+    62→- Sum of basicpayment -
+    63→- Sum of acceptanceratepenalties -
+    64→- Sum of contactratepenalties -
+    65→- Sum of stackingdeduction -
+    66→- Sum of declinedpenaltiesdaylogic -
+    67→- Sum of latepenalty -
+    68→- Sum of noshowpenalty -
+    69→- Sum of noshowpenaltyspecialcities -
+    70→- Sum of dailyacceptanceratepenalty -
+    71→- Sum of distancepayment -
+    72→- Sum of misseddayspenalty -
+    73→- Sum of segmentpayment -
+    74→- COURIERBASICPAYMENT -
+    75→- COURIERSCORINGPAYMENT -
+    76→- Rider Balance -
+    77→
+    78→B. FTR Cost - May 2026 V.3 = primary working-days and attendance source
+    79→Use fields such as:
+    80→- Contract Name
+    81→- riderid
+    82→- Name
+    83→- ridervehicletype
+    84→- totalmonthlyworkinghours
+    85→- workinghours
+    86→- fullyworkingdays
+    87→- workingdays
+    88→- inactivereason
+    89→- googledistanceabove15
+    90→- googledistancepayable
+    91→- missedweekends
+    92→- missedeom
+    93→- totalmisseddays
+    94→- misseddaysafterallowance
+    95→- misseddayspaneltylogic
+    96→- misseddayspenalty
+    97→
+    98→C. WR = finance control / reconciliation source
+    99→Use fields such as:
+   100→- Contract Name
+   101→- MSD Vendor Account
+   102→- VAT Status - Yes/No
+   103→- VAT No. -
+   104→- completedorders -
+   105→- basicpayment -
+   106→- acceptanceratepenalties -
+   107→- contactratepenalties -
+   108→- stackingdeduction -
+   109→- declinedpenaltiesdaylogic -
+   110→- latepenalty -
+   111→- noshowpenalty -
+   112→- noshowpenaltyspecialcities -
+   113→- dailyacceptanceratepenalty -
+   114→- distancepayment -
+   115→- misseddayspenalty -
+   116→- segmentpayment -
+   117→- Mecca Hajj Bonus -
+   118→- 3pl Bonus -
+   119→- 3PL Amount Excl. VAT -
+   120→- VAT -
+   121→- Amount Incl. VAT -
+   122→- COURIERBASICPAYMENT -
+   123→- COURIERSCORINGPAYMENT -
+   124→- Rider Balance -
+   125→- Car Deduction May 26 -
+   126→- 26 TGA May 2026 -
+   127→- TGA 2026 Total Deduction -
+   128→- Net FTR -
+   129→- Beneficiary Name -
+   130→- IBAN -
+   131→- Bank Name -
+   132→
+   133→D. Car Rental = optional future support sheet
+   134→Do not make this the primary payroll source unless enabled by rules.
+   135→
+   136→Join strategy:
+   137→- Use riderid / riderid - as the primary join key
+   138→- Use Contract Name as validation and conflict detection support
+   139→- Use RLVL as the primary completed-orders source
+   140→- Use FTR Cost as the primary working-days source
+   141→- Use WR as the reconciliation and finance control source
+   142→- Never silently guess column mappings
+   143→- If sheet structure changes materially, show controlled template mismatch
+   144→
+   145→==================================================
+   146→3. CORE BUSINESS REQUIREMENT
+   147→==================================================
+   148→
+   149→Create one centralized module called:
+   150→- Rules Control Center
+   151→
+   152→This module must be the single source of truth for all calculation rules.
+   153→
+   154→No salary rule should be hardcoded in scattered files.
+   155→No business rule should require code edits to change.
+   156→No finance user should need to edit formulas in Excel.
+   157→No monthly upload should require reconfiguration if the workbook template remains the same.
+   158→
+   159→==================================================
+   160→4. WHAT MUST BE EDITABLE IN ONE PLACE
+   161→==================================================
+   162→
+   163→All of the following must be editable from one centralized rules page:
+   164→
+   165→A. Salary Base Rules
+   166→- Monthly Base Salary
+   167→- Standard Working Days Per Month
+   168→- Monthly Target Orders
+   169→- Daily Target Rate display
+   170→- Salary Per Order Rate display
+   171→- Currency
+   172→- Payroll Month defaults
+   173→- Salary mode
+   174→- Salary floor
+   175→- Deduction cap
+   176→- Salary divisor mode
+   177→- Salary per order formula mode
+   178→- Salary proration mode
+   179→
+   180→B. Salary Calculation Mode Selection
+   181→- Active salary mode selector
+   182→- Days-Prorated Mode
+   183→- Orders-Based Mode
+   184→- Future Hybrid Mode placeholder
+   185→- Whether the base salary is divided by days or by monthly target orders
+   186→- Whether completed orders are compared against monthly target or adjusted target
+   187→- Whether extra orders are rewarded above monthly target or adjusted target
+   188→- Whether missing order deduction is applied below monthly target or adjusted target
+   189→- Whether orders-based salary uses strict target salary logic or pure order-rate logic
+   190→- Whether the salary is capped at monthly base salary before bonus
+   191→- Whether the salary keeps scaling by order-rate before applying bonus and deductions
+   192→
+   193→C. Orders Performance Rules
+   194→- Bonus Per Extra Order
+   195→- Deduction Per Missing Order
+   196→- Extra order threshold logic
+   197→- Missing order deduction logic
+   198→- Whether target is fixed or prorated
+   199→- Whether target is based on full month or actual working days
+   200→- Whether extra-order bonus applies only above adjusted target
+   201→- Whether missing-order deduction applies below adjusted target
+   202→- Whether salary is calculated from adjusted base salary or orders-based mode
+   203→- Whether completed orders are compared against monthly target or adjusted target
+   204→- Whether bonus and deduction remain active in orders-based mode
+   205→- Whether order-based salary uses monthly_base_salary / monthly_target_orders style rate calculation
+   206→- Whether to round salary per order or keep full precision
+   207→
+   208→D. Working Days Rules
+   209→- Use actual working days yes/no
+   210→- Standard working days baseline
+   211→- Working days source field
+   212→- Fully working days source field
+   213→- Working hours source field
+   214→- Proration method
+   215→- Target proration method
+   216→- Rounding mode for adjusted target
+   217→- Minimum required days logic
+   218→- Inactive day treatment logic
+   219→- Missing attendance handling
+   220→- Zero working days logic
+   221→- Partial month logic
+   222→
+   223→E. Penalty Rules
+   224→- Enable / disable each penalty type
+   225→- Acceptance penalty
+   226→- Contact penalty
+   227→- Stacking deduction
+   228→- Declined penalty
+   229→- Late penalty
+   230→- No-show penalty
+   231→- No-show special cities penalty
+   232→- Daily acceptance penalty
+   233→- Missed days penalty
+   234→- Rider balance deduction
+   235→- Car deduction
+   236→- TGA deduction
+   237→- Traffic violations / traffic tickets deduction
+   238→- Manual deductions
+   239→- Other mapped deductions
+   240→- Max allowed penalty
+   241→- Penalty warning threshold
+   242→- Review trigger threshold
+   243→- Penalty category
+   244→- Deduct-from-salary yes/no
+   245→- Penalty display order on payslip
+   246→- Penalty grouping in analytics
+   247→
+   248→F. Variance / Control Rules
+   249→- Use uploaded basic payment as control yes/no
+   250→- Use uploaded city payment as control yes/no
+   251→- Use WR finance fields as secondary control yes/no
+   252→- Variance tolerance amount
+   253→- Variance tolerance percentage
+   254→- Match threshold
+   255→- Minor difference threshold
+   256→- Major difference threshold
+   257→- Review-needed logic
+   258→- Variance color status rules
+   259→- Variance visibility on dashboard and payslip
+   260→
+   261→G. Contract-Level Override Rules
+   262→- Contract-specific base salary
+   263→- Contract-specific monthly target
+   264→- Contract-specific daily target
+   265→- Contract-specific salary per order rate
+   266→- Contract-specific bonus per extra order
+   267→- Contract-specific deduction per missing order
+   268→- Contract-specific working days baseline
+   269→- Contract-specific enabled penalties
+   270→- Contract-specific salary mode
+   271→- Contract-specific variance tolerance
+   272→- Contract-specific output visibility
+   273→- Contract-specific override notes
+   274→
+   275→H. Output Rules
+   276→- Show variance on payslip yes/no
+   277→- Show penalty breakdown on payslip yes/no
+   278→- Show working days on payslip yes/no
+   279→- Show traffic violations on payslip yes/no
+   280→- Show applied rules summary on payslip yes/no
+   281→- Payslip language mode
+   282→- Company branding sections on/off
+   283→- Signature block on/off
+   284→- Stamp block on/off
+   285→- Footer note on/off
+   286→- Bilingual labels mode
+   287→- Export field visibility rules
+   288→
+   289→I. Import Rules
+   290→- required sheets list
+   291→- required columns list
+   292→- allowed template versions
+   293→- fallback mapping mode
+   294→- duplicate rider detection rule
+   295→- rider join priority
+   296→- contract validation behavior
+   297→- missing numeric handling
+   298→- blank value defaults
+   299→- template mismatch severity rules
+   300→
+   301→==================================================
+   302→5. FINAL DEFAULT RULES
+   303→==================================================
+   304→
+   305→Set these as editable defaults in the Rules Control Center:
+   306→
+   307→- Monthly Base Salary = 2000 SAR
+   308→- Standard Working Days = 30
+   309→- Monthly Target Orders = 450
+   310→- Daily Target Rate = 15 orders per day
+   311→- Bonus Per Extra Order = 10 SAR
+   312→- Deduction Per Missing Order = 7 SAR
+   313→- Default Salary Mode = Orders-Based Mode
+   314→- Orders-Based Salary Per Order Rate = Monthly Base Salary / Monthly Target Orders = 2000 / 450 = 4.444444444444444
+   315→
+   316→These are default values only.
+   317→They must remain editable from the central rules page.
+   318→
+   319→==================================================
+   320→6. REQUIRED CALCULATION LOGIC
+   321→==================================================
+   322→
+   323→The salary engine must always use the ACTIVE rule set from the centralized Rules Control Center and must never rely on hardcoded payroll constants in scattered files.
+   324→
+   325→Support all of the following calculation strategies as editable rule modes:
+   326→- days_prorated_mode
+   327→- orders_based_mode
+   328→- hybrid_mode_placeholder_for_future
+   329→
+   330→The active rule set must decide which mode is used.
+   331→
+   332→------------------------------------------
+   333→6A. DAYS-PRORATED MODE
+   334→------------------------------------------
+   335→
+   336→Use this when the active salary_divisor_mode = days_prorated_mode.
+   337→
+   338→Formulas:
+   339→- Daily Base Rate = Monthly Base Salary / Standard Working Days
+   340→- Daily Target Rate = Monthly Target Orders / Standard Working Days
+   341→- Adjusted Base Salary = Daily Base Rate * Actual Working Days
+   342→- Raw Adjusted Target Orders = Daily Target Rate * Actual Working Days
+   343→- Adjusted Target Orders = rounded based on the selected rounding mode
+   344→- Extra Orders = max(Completed Orders - Adjusted Target Orders, 0)
+   345→- Missing Orders = max(Adjusted Target Orders - Completed Orders, 0)
+   346→- Bonus Amount = Extra Orders * Bonus Per Extra Order
+   347→- Missing Order Deduction = Missing Orders * Deduction Per Missing Order
+   348→
+   349→Gross Salary Before Other Penalties:
+   350→- if Completed Orders >= Adjusted Target Orders:
+   351→  Gross Salary Before Other Penalties = Adjusted Base Salary + Bonus Amount
+   352→- else:
+   353→  Gross Salary Before Other Penalties = Adjusted Base Salary - Missing Order Deduction
+   354→
+   355→------------------------------------------
+   356→6B. ORDERS-BASED MODE
+   357→------------------------------------------
+   358→
+   359→Use this when the active salary_divisor_mode = orders_based_mode.
+   360→
+   361→Core concept:
+   362→- Monthly Base Salary is tied to Monthly Target Orders
+   363→- Salary Per Order Rate = Monthly Base Salary / Monthly Target Orders
+   364→- Default example: 2000 / 450 = 4.444444444444444 per order
+   365→- If a driver scores 231 orders, then Base Salary Equivalent By Orders = 231 * 4.444444444444444
+   366→
+   367→Default formulas:
+   368→- Salary Per Order Rate = Monthly Base Salary / Monthly Target Orders
+   369→- Daily Target Rate = Monthly Target Orders / Standard Working Days
+   370→- Raw Adjusted Target Orders = Daily Target Rate * Actual Working Days
+   371→- Adjusted Target Orders = rounded based on selected rounding mode
+   372→- Base Salary Equivalent By Orders = Completed Orders * Salary Per Order Rate
+   373→- Selected Target Threshold = if Use Actual Working Days = yes then Adjusted Target Orders else Monthly Target Orders
+   374→- Extra Orders = max(Completed Orders - Selected Target Threshold, 0)
+   375→- Missing Orders = max(Selected Target Threshold - Completed Orders, 0)
+   376→- Bonus Amount = Extra Orders * Bonus Per Extra Order
+   377→- Missing Order Deduction = Missing Orders * Deduction Per Missing Order
+   378→
+   379→Default gross logic in orders_based_mode:
+   380→- Gross Salary Before Other Penalties = Base Salary Equivalent By Orders + Bonus Amount - Missing Order Deduction
+   381→
+   382→Important rule:
+   383→- Bonus and deduction remain active in orders-based mode unless the admin disables them from the Rules Control Center
+   384→
+   385→Optional alternative formula policies for admin selection:
+   386→- strict_target_salary_policy:
+   387→  - if Completed Orders = Selected Target Threshold, salary equals Monthly Base Salary
+   388→  - if Completed Orders < Selected Target Threshold, salary = Base Salary Equivalent By Orders - Missing Order Deduction
+   389→  - if Completed Orders > Selected Target Threshold, salary = Monthly Base Salary + Bonus Amount
+   390→
+   391→- linear_order_rate_policy:
+   392→  - salary = Base Salary Equivalent By Orders + Bonus Amount - Missing Order Deduction
+   393→
+   394→The Rules Control Center must allow the admin to choose which orders-based formula policy is active.
+   395→
+   396→------------------------------------------
+   397→6C. COMMON PENALTY LOGIC
+   398→------------------------------------------
+   399→
+   400→Total Other Penalties:
+   401→- sum of all enabled and mapped penalty values from the workbook according to the active penalty rules
+   402→
+   403→This total may include:
+   404→- acceptance penalties
+   405→- contact penalties
+   406→- stacking deduction
+   407→- declined penalties
+   408→- late penalty
+   409→- no-show penalty
+   410→- no-show special cities penalty
+   411→- daily acceptance penalty
+   412→- missed days penalty
+   413→- rider balance deduction
+   414→- car deduction
+   415→- TGA deduction
+   416→- traffic violations / traffic tickets
+   417→- manual deductions
+   418→- other mapped deductions
+   419→
+   420→Final Net Salary:
+   421→- Final Net Salary = Gross Salary Before Other Penalties - Total Other Penalties
+   422→
+   423→Important:
+   424→- the engine must normalize negative source deductions correctly and avoid double-sign errors
+   425→- the engine must never use fixed values directly inside calculation code if those values belong to business rules
+   426→- all such values must come from the centralized rules source
+   427→- each payroll run must save a snapshot of the exact applied rules
+   428→- later rule changes must not alter historical payroll run outputs
+   429→
+   430→==================================================
+   431→7. WORKBOOK IMPORT MODEL
+   432→==================================================
+   433→
+   434→The system must accept the FULL monthly workbook upload.
+   435→
+   436→Expected recurring sheets include:
+   437→- RLVL
+   438→- FTR Cost - month-specific working-days sheet
+   439→- WR
+   440→- Car Rental
+   441→- optional Traffic Violations sheet if added later
+   442→
+   443→The monthly workflow must be:
+   444→- admin confirms or edits active rules in Rules Control Center
+   445→- user uploads workbook
+   446→- system validates workbook structure
+   447→- system validates expected sheets and columns
+   448→- system parses raw rows
+   449→- system joins source rows by rider ID and contract validation
+   450→- system applies active rules automatically
+   451→- system calculates results for all drivers
+   452→- system shows results, exceptions, analytics, and payslips
+   453→
+   454→Manual mapping should exist only as a fallback when template structure materially changes.
+   455→
+   456→==================================================
+   457→8. TRAFFIC VIOLATIONS / TICKETS SUPPORT
+   458→==================================================
+   459→
+   460→Add full support for Traffic Violations / Traffic Tickets as payroll deductions.
+   461→
+   462→Requirements:
+   463→- traffic violations must be configurable as an enabled deduction type
+   464→- traffic violations may come from the uploaded workbook, a separate sheet, a related database table, or manual entry
+   465→- each traffic ticket may include:
+   466→  - driver ID
+   467→  - ticket date
+   468→  - ticket number
+   469→  - violation type
+   470→  - amount
+   471→  - status
+   472→  - notes
+   473→
+   474→The Rules Control Center must allow:
+   475→- enable / disable traffic deductions
+   476→- include only approved tickets yes/no
+   477→- include only unpaid tickets yes/no
+   478→- cap monthly traffic deduction yes/no
+   479→- traffic deduction review threshold
+   480→- show individual tickets on payslip yes/no
+   481→- show total traffic deduction only yes/no
+   482→
+   483→Payslip requirements:
+   484→- add Traffic Violations line item
+   485→- optionally show traffic violations detail section
+   486→- include traffic deduction inside total deductions and final net salary
+   487→
+   488→Analytics requirements:
+   489→- traffic deductions by driver
+   490→- traffic deductions by month
+   491→- highest traffic deduction drivers
+   492→- traffic deduction share of total penalties
+   493→
+   494→==================================================
+   495→9. PDF PAYSLIP DESIGN — 2026 PROFESSIONAL STANDARD
+   496→==================================================
+   497→
+   498→Design the payslip PDF as a premium 2026 enterprise document.
+   499→
+   500→Design direction:
+   501→- clean executive layout
+   502→- modern bilingual Arabic / English structure
+   503→- high readability
+   504→- compact financial grouping
+   505→- subtle premium spacing
+   506→- neutral professional color palette
+   507→- one restrained accent color
+   508→- strong typography hierarchy
+   509→- tabular numbers for financial values
+   510→- modern header with company branding
+   511→- elegant but minimal separators
+   512→- optimized for A4 printing and digital PDF viewing
+   513→- suitable for finance, HR, and driver handoff
+   514→- print-safe and ink-efficient
+   515→- no cluttered boxes
+   516→- no cheap spreadsheet look
+   517→- no outdated report styling
+   518→
+   519→The payslip must feel:
+   520→- premium
+   521→- official
+   522→- trustworthy
+   523→- enterprise-grade
+   524→- 2026-ready
+   525→- suitable for real Saudi logistics operations
+   526→
+   527→==================================================
+   528→10. RULES CONTROL CENTER UX
+   529→==================================================
+   530→
+   531→Design one premium page/module called Rules Control Center.
+   532→
+   533→This page must include:
+   534→- grouped rule sections
+   535→- editable numeric fields
+   536→- toggles
+   537→- dropdowns
+   538→- contract override tables
+   539→- rule versioning
+   540→- draft vs active rules
+   541→- effective date range
+   542→- audit log of changes
+   543→- changed by / changed at
+   544→- notes and comments
+   545→- save draft
+   546→- activate rule set
+   547→- rollback to previous rule set
+   548→- validation warnings before activation
+   549→- simulation panel to test sample payroll result before activating a rule set
+   550→- comparison view between current active rule set and draft rule set
+   551→
+   552→The page must feel like a premium 2026 enterprise settings experience:
+   553→- clean and compact
+   554→- high information density
+   555→- strong grouping
+   556→- excellent readability
+   557→- bilingual-friendly labels
+   558→- finance-friendly organization
+   559→- no clutter
+   560→
+   561→==================================================
+   562→11. RULES DATA MODEL
+   563→==================================================
+   564→
+   565→Create a robust data model for centralized rules.
+   566→
+   567→Suggested entities:
+   568→- payroll_rule_sets
+   569→- payroll_rule_values
+   570→- payroll_contract_overrides
+   571→- payroll_penalty_rules
+   572→- payroll_rule_versions
+   573→- payroll_rule_activation_log
+   574→- payroll_rule_simulations
+   575→
+   576→Each rule set must support:
+   577→- id
+   578→- name
+   579→- status (draft / active / archived)
+   580→- effective_from
+   581→- effective_to
+   582→- currency
+   583→- notes
+   584→- created_by
+   585→- created_at
+   586→- updated_by
+   587→- updated_at
+   588→- activated_by
+   589→- activated_at
+   590→- rule_mode
+   591→- snapshot_hash
+   592→
+   593→Each rule value must support:
+   594→- rule_set_id
+   595→- rule_key
+   596→- rule_label
+   597→- rule_group
+   598→- value_type
+   599→- numeric_value
+   600→- text_value
+   601→- boolean_value
+   602→- json_value
+   603→- unit
+   604→- validation_min
+   605→- validation_max
+   606→- display_order
+   607→- help_text
+   608→
+   609→Add traffic violations support tables such as:
+   610→- driver_traffic_violations
+   611→- payroll_run_traffic_deductions
+   612→
+   613→==================================================
+   614→12. CONTRACT OVERRIDES
+   615→==================================================
+   616→
+   617→Allow rules to be overridden by contract.
+   618→
+   619→Examples:
+   620→- Contract A may have a different monthly target
+   621→- Contract B may have a different bonus per extra order
+   622→- Contract C may disable a specific penalty
+   623→- Contract D may have a different working-days baseline
+   624→- Contract E may use orders_based_mode while others use days_prorated_mode
+   625→
+   626→Override resolution order must be:
+   627→1. Contract override if active
+   628→2. Otherwise global active rule set value
+   629→
+   630→==================================================
+   631→13. TEMPLATE-AWARE IMPORT VALIDATION
+   632→==================================================
+   633→
+   634→Build template-aware validation that checks:
+   635→- required sheets exist
+   636→- required columns exist
+   637→- rider ID can be resolved
+   638→- Contract Name can be resolved where needed
+   639→- numeric columns are parseable
+   640→- duplicate riders are flagged
+   641→- mismatches across sheets are flagged
+   642→- inactive riders are handled according to rules
+   643→- required join keys are present
+   644→- traffic violation source rows can be resolved if traffic mode is enabled
+   645→
+   646→If workbook structure changes materially:
+   647→- show controlled template mismatch
+   648→- do not silently guess
+   649→- do not calculate on uncertain mappings
+   650→
+   651→==================================================
+   652→14. PAYROLL RESULT MODEL
+   653→==================================================
+   654→
+   655→Each driver result must include:
+   656→
+   657→Identity:
+   658→- Driver ID
+   659→- Driver Name if available
+   660→- Contract Name
+   661→- Payroll Month
+   662→- Vehicle Type
+   663→- Inactive Reason
+   664→
+   665→Source Metrics:
+   666→- Completed Orders
+   667→- Uploaded Basic Payment
+   668→- Uploaded City Payment
+   669→- Actual Working Days
+   670→- Fully Working Days
+   671→- Working Hours
+   672→- Total Monthly Working Hours
+   673→
+   674→Applied Rule Snapshot:
+   675→- Active Rule Set Name
+   676→- Salary Divisor Mode
+   677→- Applied Base Salary
+   678→- Applied Standard Working Days
+   679→- Applied Monthly Target Orders
+   680→- Applied Daily Target Rate
+   681→- Applied Salary Per Order Rate
+   682→- Applied Bonus Per Extra Order
+   683→- Applied Deduction Per Missing Order
+   684→- Traffic Deductions Enabled
+   685→
+   686→Calculated Metrics:
+   687→- Daily Base Rate
+   688→- Daily Target Rate
+   689→- Salary Per Order Rate
+   690→- Adjusted Base Salary
+   691→- Adjusted Target Orders
+   692→- Selected Target Threshold
+   693→- Base Salary Equivalent By Orders
+   694→- Extra Orders
+   695→- Missing Orders
+   696→- Bonus Amount
+   697→- Missing Order Deduction
+   698→- Traffic Violations Deduction
+   699→- Total Other Penalties
+   700→- Gross Salary Before Other Penalties
+   701→- Final Net Salary
+   702→- Variance Amount
+   703→- Variance Percentage
+   704→- Variance Status
+   705→- Review Status
+   706→- Exception Flag
+   707→
+   708→==================================================
+   709→15. EXCEPTION ENGINE
+   710→==================================================
+   711→
+   712→Build a strong exception center that detects:
+   713→- missing sheets
+   714→- missing columns
+   715→- duplicate riders
+   716→- missing rider IDs
+   717→- rider in one sheet but not the other
+   718→- contract mismatch
+   719→- invalid working days
+   720→- invalid numeric values
+   721→- suspicious negative values
+   722→- negative final salary
+   723→- abnormal penalty totals
+   724→- abnormal traffic deductions
+   725→- abnormal variance
+   726→- payslip generation issues
+   727→- template mismatch
+   728→- missing required active rules
+   729→- invalid override conflicts
+   730→
+   731→Each exception must include:
+   732→- code
+   733→- severity
+   734→- source
+   735→- row reference if possible
+   736→- suggested action
+   737→- review status
+   738→- assignee if needed
+   739→
+   740→==================================================
+   741→16. DASHBOARD & ANALYTICS
+   742→==================================================
+   743→
+   744→Create an executive dashboard with:
+   745→
+   746→KPI cards:
+   747→- Total Drivers
+   748→- Total Contracts
+   749→- Total Working Days
+   750→- Total Completed Orders
+   751→- Total Gross Salary
+   752→- Total Penalties
+   753→- Total Final Net Salary
+   754→- Total Variance
+   755→- Total Traffic Violations Deduction
+   756→- Drivers Requiring Review
+   757→- Highest Paid Driver
+   758→- Highest Penalty Driver
+   759→- Active Rule Set
+   760→- Current Salary Mode
+   761→- Current Monthly Target
+   762→- Current Daily Target
+   763→- Current Salary Per Order Rate
+   764→- Current Bonus Per Extra Order
+   765→- Current Deduction Per Missing Order
+   766→
+   767→Charts:
+   768→- Final Net Salary by Contract
+   769→- Completed Orders vs Selected Target Threshold
+   770→- Top 10 Drivers by Net Salary
+   771→- Bottom 10 Drivers by Net Salary
+   772→- Penalty Breakdown by Type
+   773→- Traffic Violations by Driver
+   774→- Working Days vs Net Salary
+   775→- Variance by Driver
+   776→- Drivers by Review Status
+   777→- Drivers by Performance Band
+   778→
+   779→Analytics must reflect the active central rule set automatically.
+   780→
+   781→==================================================
+   782→17. PAYSLIP MODULE
+   783→==================================================
+   784→
+   785→Build a full payslip engine with:
+   786→- preview
+   787→- browser print
+   788→- individual PDF download
+   789→- bulk PDF generation
+   790→- ZIP export
+   791→
+   792→Each payslip must support:
+   793→- Company Logo
+   794→- Company Name
+   795→- Arabic Company Name
+   796→- company information block
+   797→- payroll month
+   798→- driver identity section
+   799→- earnings section
+   800→- deductions section
+   801→- final salary section
+   802→- optional variance display
+   803→- applied rule summary
+   804→- Traffic Violations line item
+   805→- optional traffic tickets detail section
+   806→- footer note
+   807→- optional signature block
+   808→- optional stamp block
+   809→
+   810→Payslip values must always use the active applied rule set that was used during the payroll run.
+   811→
+   812→==================================================
+   813→18. COMPANY BRANDING
+   814→==================================================
+   815→
+   816→Create one centralized company branding settings area with:
+   817→- Company Name
+   818→- Arabic Company Name
+   819→- Logo
+   820→- Address
+   821→- Phone
+   822→- Email
+   823→- VAT Number
+   824→- CR Number
+   825→- Footer Note
+   826→- Signature Image
+   827→- Stamp Image
+   828→
+   829→This branding layer must feed:
+   830→- payslips
+   831→- exports
+   832→- print layouts
+   833→- future templates
+   834→
+   835→==================================================
+   836→19. FRONTEND MODULES
+   837→==================================================
+   838→
+   839→Create these pages/modules:
+   840→- Payroll Imports
+   841→- Payroll Import Details
+   842→- Payroll Runs
+   843→- Driver Results
+   844→- Driver Detail
+   845→- Exceptions Center
+   846→- Rules Control Center
+   847→- Contract Overrides
+   848→- Penalty Rules
+   849→- Traffic Violations
+   850→- Dashboard
+   851→- Analytics
+   852→- Payslips List
+   853→- Payslip Preview
+   854→- Export Center
+   855→- Company Branding Settings
+   856→- Audit Logs
+   857→
+   858→==================================================
+   859→20. API DESIGN
+   860→==================================================
+   861→
+   862→Create APIs such as:
+   863→- POST /api/payroll/imports
+   864→- GET /api/payroll/imports/:id
+   865→- POST /api/payroll/imports/:id/process
+   866→- GET /api/payroll/runs/:id
+   867→- GET /api/payroll/runs/:id/results
+   868→- GET /api/payroll/runs/:id/exceptions
+   869→- GET /api/payroll/runs/:id/dashboard
+   870→- POST /api/payroll/rules
+   871→- GET /api/payroll/rules/active
+   872→- GET /api/payroll/rules/:id
+   873→- PUT /api/payroll/rules/:id
+   874→- POST /api/payroll/rules/:id/activate
+   875→- POST /api/payroll/rules/:id/simulate
+   876→- GET /api/payroll/contract-overrides
+   877→- PUT /api/payroll/contract-overrides
+   878→- GET /api/traffic-violations
+   879→- POST /api/traffic-violations
+   880→- PUT /api/traffic-violations/:id
+   881→- GET /api/payroll/payslips/:id
+   882→- GET /api/payroll/payslips/:id/pdf
+   883→- POST /api/payroll/payslips/bulk-export
+   884→- GET /api/company/profile
+   885→- PUT /api/company/profile
+   886→- GET /api/audit-logs
+   887→
+   888→==================================================
+   889→21. SECURITY, AUDIT, APPROVALS
+   890→==================================================
+   891→
+   892→Support:
+   893→- authenticated access
+   894→- role-based permissions
+   895→- rule edit permissions
+   896→- rule activation permissions
+   897→- traffic violations management permissions
+   898→- full audit trail for rule changes
+   899→- import audit trail
+   900→- export audit trail
+   901→- payslip generation audit trail
+   902→- immutable payroll snapshots after approval if enabled
+   903→- generated-by and generated-at metadata
+   904→
+   905→==================================================
+   906→22. DEPLOYMENT & OPERATIONS
+   907→==================================================
+   908→
+   909→Provide:
+   910→- environment variables
+   911→- storage bucket design
+   912→- background job strategy
+   913→- retry strategy
+   914→- performance strategy for large workbook imports
+   915→- observability
+   916→- retention strategy
+   917→- backup and restore strategy
+   918→- deployment recommendation using Vercel + Supabase or equivalent
+   919→
+   920→==================================================
+   921→23. IMPLEMENTATION OUTPUT FORMAT
+   922→==================================================
+   923→
+   924→Provide the final build-ready implementation in this exact order:
+   925→
+   926→1. Recommended architecture
+   927→2. Why this architecture is best
+   928→3. Full project file tree
+   929→4. Environment variables
+   930→5. Database schema
+   931→6. Supabase storage design
+   932→7. Auth and RLS strategy
+   933→8. Rules Control Center design
+   934→9. Rule set data model
+   935→10. Contract override model
+   936→11. Traffic violations model
+   937→12. Workbook import design
+   938→13. Template-aware parser design
+   939→14. Normalization and join logic
+   940→15. Salary calculation engine
+   941→16. Penalty engine
+   942→17. Variance logic
+   943→18. Exception engine
+   944→19. API routes
+   945→20. Background jobs
+   946→21. Frontend pages and UX flow
+   947→22. Dashboard and analytics structure
+   948→23. Payslip template structure
+   949→24. Print CSS strategy
+   950→25. Playwright PDF generation flow
+   951→26. Bulk ZIP export flow
+   952→27. Audit and approval flow
+   953→28. Deployment architecture
+   954→29. Build phases / implementation order
+   955→30. Final implementation recommendations
+   956→
+   957→Then generate:
+   958→- SQL schema
+   959→- TypeScript interfaces
+   960→- Zod schemas
+   961→- service layer stubs
+   962→- repository layer structure
+   963→- parser pseudocode
+   964→- salary calculation pseudocode
+   965→- exception engine pseudocode
+   966→- PDF generation pseudocode
+   967→- page/module specifications
+   968→
+   969→Do not stay conceptual.
+   970→Do not give vague advice.
+   971→Do not hardcode business rules in scattered places.
+   972→Do not make the uploaded workbook the place where rules are edited.
+   973→Make the centralized Rules Control Center the single source of truth for all calculation logic.
+   974→
+   975→Important final requirements:
+   976→- all calculation rules must be editable in one place
+   977→- workbook upload must be the default monthly workflow
+   978→- manual mapping is fallback only
+   979→- Monthly Base Salary default = 2000 SAR
+   980→- Standard Working Days default = 30
+   981→- Monthly Target Orders default = 450
+   982→- Daily Target Rate default = 15
+   983→- Orders-Based Salary Per Order default = 2000 / 450 = 4.444444444444444
+   984→- Default Orders-Based Gross Logic = Base Salary Equivalent By Orders + Bonus Amount - Missing Order Deduction
+   985→- Bonus Per Extra Order default = 10 SAR
+   986→- Deduction Per Missing Order default = 7 SAR
+   987→- the admin must be able to choose between days_prorated_mode and orders_based_mode
+   988→- RLVL must be the primary completed-orders and payroll source
+   989→- FTR Cost must be the primary working-days source
+   990→- WR must be the reconciliation and finance control source
+   991→- traffic violations / traffic tickets must be supported as deductions and shown on the payslip
+   992→- all defaults must remain editable from the same centralized rules center
+   993→- the system must support company logo and company information in PDF payslips
+   994→- the system must use a premium professional 2026 payslip PDF design
+   995→- the system must be bilingual-friendly
+   996→- the result must feel like a premium 2026 enterprise payroll product
+   997→- optimize for real logistics operations, not demo usage
+   998→- save applied rule snapshots per payroll run so historical outputs remain unchanged even if rules are edited later

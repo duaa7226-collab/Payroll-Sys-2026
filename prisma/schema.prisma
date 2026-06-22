@@ -1,0 +1,240 @@
+// Premium 2026 Payroll System — Nokhaba Tatweer Logistics
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// CENTRAL RULES CONTROL CENTER — single source of truth
+// ============================================================
+model PayrollRuleSet {
+  id            String   @id @default(cuid())
+  name          String
+  status        String   @default("draft") // draft | active | archived
+  ruleMode      String   @default("orders_based_mode") // days_prorated_mode | orders_based_mode | hybrid_mode
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  currency      String   @default("SAR")
+  notes         String?
+  snapshotHash  String?
+  createdBy     String   @default("admin")
+  createdAt     DateTime @default(now())
+  updatedBy     String?
+  updatedAt     DateTime @updatedAt
+  activatedBy   String?
+  activatedAt   DateTime?
+
+  ruleValues        PayrollRuleValue[]
+  contractOverrides ContractOverride[]
+  payrollRuns       PayrollRun[]
+  auditLogs         AuditLog[]
+}
+
+model PayrollRuleValue {
+  id            String   @id @default(cuid())
+  ruleSetId     String
+  ruleKey       String
+  ruleLabel     String
+  ruleGroup     String
+  valueType     String // numeric | text | boolean | json | select
+  numericValue  Float?
+  textValue     String?
+  booleanValue  Boolean?
+  jsonValue     String?
+  unit          String?
+  validationMin Float?
+  validationMax Float?
+  displayOrder  Int      @default(0)
+  helpText      String?
+  ruleSet       PayrollRuleSet @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleSetId, ruleKey])
+}
+
+model ContractOverride {
+  id            String   @id @default(cuid())
+  ruleSetId     String
+  contractName  String
+  ruleKey       String
+  ruleLabel     String
+  valueType     String
+  numericValue  Float?
+  textValue     String?
+  booleanValue  Boolean?
+  notes         String?
+  enabled       Boolean  @default(true)
+  ruleSet       PayrollRuleSet @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleSetId, contractName, ruleKey])
+}
+
+// ============================================================
+// COMPANY PROFILE & BRANDING
+// ============================================================
+model CompanyProfile {
+  id              String   @id @default(cuid())
+  name            String   @default("Nokhaba Tatweer for Trading")
+  nameAr          String   @default("مؤسسة نخبة التطوير للتجارة")
+  logo            String?
+  address         String?
+  addressAr       String?
+  phone           String?
+  email           String?
+  vatNumber       String?
+  crNumber        String?
+  footerNote      String?
+  footerNoteAr    String?
+  signatureImg    String?
+  stampImg        String?
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================================
+// DRIVERS
+// ============================================================
+model Driver {
+  id            String   @id @default(cuid())
+  riderId       String   @unique
+  name          String
+  contractName  String   @default("nokhaba_tatweer_ftr")
+  vehicleType   String   @default("car")
+  bankName      String?
+  iban          String?
+  beneficiaryName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  results       DriverResult[]
+  violations    TrafficViolation[]
+}
+
+// ============================================================
+// PAYROLL RUNS (one per month upload)
+// ============================================================
+model PayrollRun {
+  id              String   @id @default(cuid())
+  payrollMonth    String   // e.g. "May 2026"
+  fileName        String
+  ruleSetId       String
+  ruleSnapshot    String   // JSON snapshot of applied rules (immutable)
+  status          String   @default("completed") // validating | processing | completed | failed
+  totalDrivers    Int      @default(0)
+  totalGross      Float    @default(0)
+  totalPenalties  Float    @default(0)
+  totalNet        Float    @default(0)
+  totalVariance   Float    @default(0)
+  totalTraffic    Float    @default(0)
+  importedBy      String   @default("admin")
+  createdAt       DateTime @default(now())
+  ruleSet         PayrollRuleSet @relation(fields: [ruleSetId], references: [id])
+  results         DriverResult[]
+  exceptions      PayrollException[]
+}
+
+model DriverResult {
+  id                       String   @id @default(cuid())
+  payrollRunId             String
+  driverId                 String
+  riderId                  String
+  driverName               String
+  contractName             String
+  payrollMonth             String
+  vehicleType              String
+  inactiveReason           String?
+  // Source metrics
+  completedOrders          Int
+  uploadedBasicPayment     Float
+  uploadedCityPayment      Float
+  actualWorkingDays        Float
+  fullyWorkingDays         Float
+  workingHours             Float
+  totalMonthlyWorkingHours Float
+  // Applied rules snapshot
+  activeRuleSetName        String
+  salaryDivisorMode        String
+  appliedBaseSalary        Float
+  appliedStdWorkingDays    Float
+  appliedMonthlyTarget     Float
+  appliedDailyTargetRate   Float
+  appliedSalaryPerOrder    Float
+  appliedBonusPerExtra     Float
+  appliedDeductionPerMissing Float
+  trafficDeductionsEnabled Boolean
+  // Calculated metrics
+  dailyBaseRate            Float
+  adjustedBaseSalary       Float
+  adjustedTargetOrders     Float
+  selectedTargetThreshold  Float
+  baseSalaryEquivalent     Float
+  extraOrders              Int
+  missingOrders            Int
+  bonusAmount              Float
+  missingOrderDeduction    Float
+  // Penalties (JSON map)
+  penaltiesJson            String   // {key: value}
+  totalOtherPenalties      Float
+  trafficViolationsDeduction Float  @default(0)
+  grossSalaryBeforePenalties Float
+  finalNetSalary           Float
+  varianceAmount           Float
+  variancePercentage       Float
+  varianceStatus           String   @default("ok") // ok | minor | major | review
+  reviewStatus             String   @default("ok") // ok | review | flagged
+  exceptionFlag            Boolean  @default(false)
+  performanceBand          String   @default("average") // top | high | average | low | bottom
+
+  payrollRun  PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  driver      Driver     @relation(fields: [driverId], references: [id])
+
+  @@unique([payrollRunId, driverId])
+}
+
+model PayrollException {
+  id            String   @id @default(cuid())
+  payrollRunId  String
+  code          String
+  severity      String   // info | warning | error
+  source        String
+  rowRef        String?
+  message       String
+  suggestedAction String?
+  reviewStatus  String   @default("open") // open | resolved | ignored
+  payrollRun    PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// TRAFFIC VIOLATIONS / TICKETS
+// ============================================================
+model TrafficViolation {
+  id          String   @id @default(cuid())
+  driverId    String
+  riderId     String
+  ticketDate  DateTime
+  ticketNumber String?
+  violationType String
+  amount      Float
+  status      String   @default("approved") // pending | approved | rejected | paid
+  notes       String?
+  payrollRunId String? // link to payroll run when included
+  createdAt   DateTime @default(now())
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String   // rule_create | rule_activate | rule_edit | import | export | payslip_gen
+  entityType  String   // rule_set | payroll_run | traffic_violation | company
+  entityId    String?
+  ruleSetId   String?
+  description String
+  metadata    String?  // JSON
+  performedBy String   @default("admin")
+  createdAt   DateTime @default(now())
+  ruleSet     PayrollRuleSet? @relation(fields: [ruleSetId], references: [id])
+}
