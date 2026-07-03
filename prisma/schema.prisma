@@ -89,7 +89,9 @@ model CompanyProfile {
   footerNote      String?
   footerNoteAr    String?
   signatureImg    String?
+  riderSignatureImg String?
   stampImg        String?
+  accManagerName  String?
   updatedAt       DateTime @updatedAt
 }
 

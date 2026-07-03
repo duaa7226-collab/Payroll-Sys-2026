@@ -22,11 +22,20 @@ async function main() {
         email: 'finance@nokhaba-tatweer.com',
         vatNumber: '310133979100003',
         crNumber: 'N/A',
+        accManagerName: 'Accounting Manager',
         footerNote: 'This is a computer-generated payslip and does not require a physical signature.',
         footerNoteAr: 'هذه قسيمة راتب مُولّدة آليًا ولا تتطلب توقيعًا يدويًا.',
       },
     })
     console.log('Created company profile')
+  } else {
+    // Ensure accManagerName field exists (added in latest schema)
+    if (!existingCompany.accManagerName) {
+      await db.companyProfile.update({
+        where: { id: existingCompany.id },
+        data: { accManagerName: 'Accounting Manager' },
+      })
+    }
   }
 
   // 2. Ensure default active rule set
@@ -58,17 +67,15 @@ async function main() {
     })
   }
 
-  // 5. Create payroll run
+  // 5. Create payroll run — delete ALL existing runs first (re-seed with corrected calc)
   const payrollMonth = 'May 2026'
-  const existingRun = await db.payrollRun.findFirst({
-    where: { payrollMonth, fileName: 'nokhaba_tatweer_ftr_Invoice-Issue-May-2026_with_names_fixed.xlsx' },
-  })
-  if (existingRun) {
-    await db.driverResult.deleteMany({ where: { payrollRunId: existingRun.id } })
-    await db.payrollException.deleteMany({ where: { payrollRunId: existingRun.id } })
-    await db.payrollRun.delete({ where: { id: existingRun.id } })
-    console.log('Deleted existing May 2026 run for re-seed')
+  const existingRuns = await db.payrollRun.findMany()
+  for (const r of existingRuns) {
+    await db.driverResult.deleteMany({ where: { payrollRunId: r.id } })
+    await db.payrollException.deleteMany({ where: { payrollRunId: r.id } })
+    await db.payrollRun.delete({ where: { id: r.id } })
   }
+  console.log(`Cleared ${existingRuns.length} existing payroll runs for re-seed`)
 
   const payrollRun = await db.payrollRun.create({
     data: {

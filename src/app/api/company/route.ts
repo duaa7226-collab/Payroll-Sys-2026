@@ -18,11 +18,22 @@ export async function GET() {
 // PUT /api/company
 export async function PUT(req: NextRequest) {
   const body = await req.json()
+  // Whitelist allowed fields to prevent Prisma validation errors
+  const allowedFields = [
+    'name', 'nameAr', 'logo', 'address', 'addressAr', 'phone', 'email',
+    'vatNumber', 'crNumber', 'footerNote', 'footerNoteAr',
+    'signatureImg', 'riderSignatureImg', 'stampImg', 'accManagerName',
+  ]
+  const cleanBody: any = {}
+  for (const k of allowedFields) {
+    if (k in body) cleanBody[k] = body[k]
+  }
+
   let profile = await db.companyProfile.findFirst()
   if (!profile) {
-    profile = await db.companyProfile.create({ data: body })
+    profile = await db.companyProfile.create({ data: cleanBody })
   } else {
-    profile = await db.companyProfile.update({ where: { id: profile.id }, data: body })
+    profile = await db.companyProfile.update({ where: { id: profile.id }, data: cleanBody })
   }
   await db.auditLog.create({
     data: {

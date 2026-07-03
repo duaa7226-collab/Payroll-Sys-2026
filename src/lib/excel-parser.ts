@@ -24,12 +24,19 @@ function norm(s: string): string {
 
 function findCol(headers: string[], ...candidates: string[]): string | null {
   const normalized = headers.map(h => ({ raw: h, norm: norm(h) }))
+  // Pass 1: exact match (prevents 'working_days' from matching 'fully_working_days')
   for (const cand of candidates) {
     const c = cand.toLowerCase().replace(/\s+/g, '_')
-    const found = normalized.find(h => h.norm === c || h.norm.includes(c))
+    const found = normalized.find(h => h.norm === c)
     if (found) return found.raw
   }
-  // Fuzzy: contains any candidate substring
+  // Pass 2: starts-with match (e.g., 'rider_id' matches 'rider_id - معرف')
+  for (const cand of candidates) {
+    const c = cand.toLowerCase().replace(/\s+/g, '_')
+    const found = normalized.find(h => h.norm.startsWith(c))
+    if (found) return found.raw
+  }
+  // Pass 3: fuzzy includes (last resort)
   for (const cand of candidates) {
     const c = cand.toLowerCase()
     const found = normalized.find(h => h.raw.toLowerCase().includes(c))
