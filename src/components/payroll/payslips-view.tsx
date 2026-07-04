@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '@/components/ui/dialog'
 import { PayslipPreview } from './payslip-preview'
-import { generatePayslipPDF } from '@/lib/payslip-pdf'
+import { generatePayslipPDFDownload } from '@/lib/payslip-pdf'
 import { toast } from 'sonner'
 
 export function PayslipsView({ runId }: { runId: string | null }) {
@@ -41,17 +41,19 @@ export function PayslipsView({ runId }: { runId: string | null }) {
   const handleBulkDownload = async () => {
     setBulkLoading(true)
     try {
-      // Sequential download — fire them one by one with brief delay
       toast.info(`Generating ${filtered.length} PDFs...`)
-      for (const r of filtered) {
+      for (let i = 0; i < filtered.length; i++) {
+        const r = filtered[i]
         const resp = await fetch(`/api/payslip?resultId=${r.id}`)
         const data = await resp.json()
-        generatePayslipPDF(data)
-        await new Promise(res => setTimeout(res, 250))
+        await generatePayslipPDFDownload(data)
+        // small delay between downloads so browser doesn't block them
+        await new Promise(res => setTimeout(res, 600))
       }
       toast.success(`Generated ${filtered.length} payslips`)
-    } catch (e) {
-      toast.error('Bulk export failed')
+    } catch (e: any) {
+      console.error(e)
+      toast.error('Bulk export failed: ' + (e.message || ''))
     } finally {
       setBulkLoading(false)
     }

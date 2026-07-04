@@ -1,378 +1,450 @@
-// Premium 2026 Payslip PDF Generator — bilingual Arabic/English
-// Modern, professional layout — no calculation method details exposed.
+// Premium 2026 Payslip PDF Generator
+// Uses html2canvas to capture the browser-rendered HTML payslip (which supports
+// Arabic perfectly via the browser's font/text engine) and embeds it as an image
+// in a jsPDF A4 document. This guarantees Arabic renders correctly.
 import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import html2canvas from 'html2canvas'
 
-const PENALTY_LABELS: Record<string, { en: string; ar: string }> = {
-  acceptance: { en: 'Acceptance Penalty', ar: 'غرامة معدل القبول' },
-  contact: { en: 'Contact Penalty', ar: 'غرامة معدل التواصل' },
-  stacking: { en: 'Stacking Deduction', ar: 'خصم الطلبات المتعددة' },
-  declined: { en: 'Declined Penalty', ar: 'غرامة الرفض' },
-  late: { en: 'Late Penalty', ar: 'غرامة التأخير' },
-  noshow: { en: 'No-Show Penalty', ar: 'غرامة عدم الحضور' },
-  noshow_special: { en: 'No-Show Special Cities', ar: 'غرامة عدم الحضور للمدن الخاصة' },
-  daily_acceptance: { en: 'Daily Acceptance Penalty', ar: 'غرامة معدل القبول اليومي' },
-  missed_days: { en: 'Missed Days Penalty', ar: 'غرامة الأيام المفقودة' },
-  rider_balance: { en: 'Rider Balance Deduction', ar: 'خصم رصيد المندوب' },
-  car_deduction: { en: 'Car Deduction', ar: 'خصم السيارة' },
-  tga_deduction: { en: 'TGA Deduction', ar: 'خصم TGA' },
-}
+// Capture an HTML element as an A4 PDF — returns a blob URL for printing in new tab
+export async function generatePayslipPDFFromElement(element: HTMLElement): Promise<{ blobUrl: string; download: () => void }> {
+  // Clone the element into an isolated iframe to avoid parent CSS (Tailwind oklch) bleed
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'position:fixed; top:-10000px; left:0; width:850px; height:1200px; border:0; z-index:-1;'
+  document.body.appendChild(iframe)
 
-const BAND_LABELS: Record<string, string> = {
-  top: 'Top Performer',
-  high: 'High',
-  average: 'Average',
-  low: 'Low',
-  bottom: 'Bottom',
-}
+  try {
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+    if (!iframeDoc) throw new Error('Cannot access iframe document')
 
-export function generatePayslipPDF(data: any) {
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
-  drawPayslipOnDoc(doc, data)
-  const { result } = data
-  const fileName = `payslip_${result.driverName.replace(/\s+/g, '_')}_${result.payrollMonth.replace(/\s+/g, '_')}.pdf`
-  doc.save(fileName)
-}
+    // Write minimal HTML with the payslip content — no Tailwind, no parent CSS
+    iframeDoc.open()
+    iframeDoc.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <style>
+          * { box-sizing: border-box; }
+          html, body { margin: 0; padding: 0; background: #ffffff; color: #000000; }
+          body { font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif; }
+          table { border-collapse: collapse; }
+          img { max-width: 100%; }
+        </style>
+      </head>
+      <body>${element.innerHTML}</body>
+      </html>
+    `)
+    iframeDoc.close()
 
-// Generate PDF and return blob URL — used for Print (opens in new tab)
-export function generatePayslipPDFBlob(data: any): string {
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
-  drawPayslipOnDoc(doc, data)
-  return doc.output('bloburl')
-}
-
-// Internal: draw payslip content on a provided jsPDF doc
-function drawPayslipOnDoc(doc: jsPDF, data: any) {
-  const { result, driver, company, traffic, penalties } = data
-  const pageWidth = doc.internal.pageSize.getWidth()
-  const pageHeight = doc.internal.pageSize.getHeight()
-  const margin = 36
-
-  // ===== Premium Header with optional logo =====
-  doc.setFillColor(6, 78, 59)
-  doc.rect(0, 0, pageWidth, 96, 'F')
-  doc.setFillColor(16, 185, 129)
-  doc.rect(0, 96, pageWidth, 2, 'F')
-
-  doc.setTextColor(255, 255, 255)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.text('SALARY STATEMENT  ·  كشف راتب', margin, 28)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.text(company?.name || 'Nokhaba Tatweer for Trading', margin, 52)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(12)
-  doc.text(company?.nameAr || 'مؤسسة نخبة التطوير للتجارة', margin, 70)
-  doc.setFontSize(9)
-  doc.text(
-    `${company?.address || 'Riyadh, Saudi Arabia'}   ·   VAT: ${company?.vatNumber || 'N/A'}`,
-    margin, 86
-  )
-
-  if (company?.logo) {
-    try {
-      const imgFormat = company.logo.startsWith('data:image/png') ? 'PNG'
-        : company.logo.startsWith('data:image/jpeg') ? 'JPEG'
-        : 'PNG'
-      doc.addImage(company.logo, imgFormat, pageWidth - margin - 110, 18, 110, 60, undefined, 'FAST')
-    } catch (e) {
-      doc.setFontSize(8)
-      doc.text('PAY PERIOD', pageWidth - margin, 28, { align: 'right' })
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(14)
-      doc.text(result.payrollMonth, pageWidth - margin, 46, { align: 'right' })
+    // Wait for fonts to load
+    await new Promise(res => setTimeout(res, 500))
+    if (iframe.contentWindow?.document.fonts) {
+      try { await iframe.contentWindow.document.fonts.ready } catch {}
     }
-  } else {
-    doc.setFontSize(8)
-    doc.text('PAY PERIOD', pageWidth - margin, 28, { align: 'right' })
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(14)
-    doc.text(result.payrollMonth, pageWidth - margin, 46, { align: 'right' })
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.text(
-      `Generated: ${new Date().toLocaleDateString('en-GB')}`,
-      pageWidth - margin, 62, { align: 'right' }
-    )
+
+    const target = iframeDoc.body.firstElementChild as HTMLElement
+    if (!target) throw new Error('No payslip element in iframe')
+
+    // Render with html2canvas
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: '#ffffff',
+      logging: false,
+      width: 800,
+      windowWidth: 800,
+    })
+
+    const imgData = canvas.toDataURL('image/png')
+
+    // Create A4 PDF
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' })
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+
+    const margin = 12
+    const imgWidth = pageWidth - margin * 2
+    const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+    if (imgHeight <= pageHeight - margin * 2) {
+      const offsetY = (pageHeight - imgHeight) / 2
+      pdf.addImage(imgData, 'PNG', margin, offsetY, imgWidth, imgHeight, undefined, 'FAST')
+    } else {
+      // Multi-page pagination
+      const pageContentHeightPx = (canvas.width * (pageHeight - margin * 2)) / imgWidth
+      let srcY = 0
+      let page = 1
+      while (srcY < canvas.height) {
+        const sliceHeight = Math.min(pageContentHeightPx, canvas.height - srcY)
+        const sliceCanvas = document.createElement('canvas')
+        sliceCanvas.width = canvas.width
+        sliceCanvas.height = sliceHeight
+        const ctx = sliceCanvas.getContext('2d')!
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height)
+        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight)
+
+        const sliceImgData = sliceCanvas.toDataURL('image/png')
+        const sliceHeightPt = (sliceHeight * imgWidth) / canvas.width
+
+        if (page > 1) pdf.addPage()
+        pdf.addImage(sliceImgData, 'PNG', margin, margin, imgWidth, sliceHeightPt, undefined, 'FAST')
+
+        srcY += sliceHeight
+        page++
+      }
+    }
+
+    const blobUrl = pdf.output('bloburl')
+    const data = (element as any).__payslipData
+    const download = () => {
+      const result = data?.result
+      const fileName = `payslip_${result?.driverName?.replace(/\s+/g, '_') ?? 'driver'}_${result?.payrollMonth?.replace(/\s+/g, '_') ?? 'month'}.pdf`
+      pdf.save(fileName)
+    }
+
+    return { blobUrl, download }
+  } finally {
+    document.body.removeChild(iframe)
   }
+}
 
-  let y = 116
-  if (company?.logo) {
-    doc.setFillColor(249, 250, 251)
-    doc.rect(0, 98, pageWidth, 22, 'F')
-    doc.setTextColor(107, 114, 128)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    doc.text(`Pay Period: ${result.payrollMonth}`, margin, 112)
-    doc.setFontSize(9)
-    doc.text(`Generated: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin, 112, { align: 'right' })
-    y = 130
+// Helper: build a hidden HTML element for the payslip, render it, capture as PDF
+// This is used when we want to generate a PDF without showing it on screen
+export async function generatePayslipPDFBlobFromData(data: any): Promise<string> {
+  const { result, driver, company, traffic, penalties } = data
+  // Create a temporary container element
+  const container = document.createElement('div')
+  container.style.cssText = `
+    position: fixed;
+    top: -10000px;
+    left: 0;
+    width: 800px;
+    background: white;
+    color: black;
+    font-family: 'Cairo', 'IBM Plex Sans Arabic', sans-serif;
+    z-index: -1;
+  `
+  container.innerHTML = buildPayslipHTML(data)
+  document.body.appendChild(container)
+  // Store data for filename
+  ;(container as any).__payslipData = { result }
+
+  try {
+    const { blobUrl } = await generatePayslipPDFFromElement(container)
+    return blobUrl
+  } finally {
+    document.body.removeChild(container)
   }
+}
 
-  // Driver Identity
-  doc.setFillColor(249, 250, 251)
-  doc.rect(margin, y - 4, pageWidth - margin * 2, 56, 'F')
-  doc.setTextColor(107, 114, 128)
-  doc.setFontSize(7)
-  doc.setFont('helvetica', 'bold')
-  const colW = (pageWidth - margin * 2) / 4
-  const labels = ['DRIVER NAME', 'RIDER ID', 'CONTRACT', 'VEHICLE TYPE']
-  const values = [result.driverName, result.riderId, result.contractName, result.vehicleType]
-  for (let i = 0; i < 4; i++) {
-    doc.text(labels[i], margin + 10 + i * colW, y + 8)
-    doc.setTextColor(17, 24, 39)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.text(values[i], margin + 10 + i * colW, y + 26)
-    doc.setTextColor(107, 114, 128)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7)
+export async function generatePayslipPDFDownload(data: any): Promise<void> {
+  const { result } = data
+  const container = document.createElement('div')
+  container.style.cssText = `
+    position: fixed;
+    top: -10000px;
+    left: 0;
+    width: 800px;
+    background: white;
+    color: black;
+    font-family: 'Cairo', 'IBM Plex Sans Arabic', sans-serif;
+    z-index: -1;
+  `
+  container.innerHTML = buildPayslipHTML(data)
+  document.body.appendChild(container)
+  ;(container as any).__payslipData = { result }
+
+  try {
+    const { download } = await generatePayslipPDFFromElement(container)
+    download()
+  } finally {
+    document.body.removeChild(container)
   }
-  y += 68
+}
 
-  // Performance summary
-  doc.setFillColor(240, 253, 244)
-  doc.rect(margin, y - 4, pageWidth - margin * 2, 22, 'F')
-  doc.setTextColor(6, 95, 70)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  const attainmentPct = result.selectedTargetThreshold > 0
-    ? ((result.completedOrders / result.selectedTargetThreshold) * 100).toFixed(1)
-    : 'N/A'
-  doc.text(
-    `Performance: ${BAND_LABELS[result.performanceBand] ?? result.performanceBand}    ·    Target Attainment: ${attainmentPct}%`,
-    margin + 10, y + 10
-  )
-  y += 30
-
-  // Two columns: Working Summary + Earnings
-  const colGap = 20
-  const innerColW = (pageWidth - margin * 2 - colGap) / 2
-
-  // Left: Working Summary
-  doc.setTextColor(107, 114, 128)
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.text('WORKING SUMMARY', margin, y)
-  doc.setDrawColor(6, 78, 59)
-  doc.setLineWidth(1.2)
-  doc.line(margin, y + 4, margin + innerColW, y + 4)
-
-  const leftRows: [string, string][] = [
-    ['Completed Orders', `${result.completedOrders}`],
-    ['Target Orders', result.selectedTargetThreshold.toFixed(0)],
-    ['Working Days', `${result.actualWorkingDays.toFixed(0)}`],
-    ['Working Hours', result.workingHours.toFixed(1)],
-  ]
-  if (result.inactiveReason && result.inactiveReason !== 'Active') {
-    leftRows.push(['Inactive Reason', result.inactiveReason])
-  }
-  let ly = y + 20
-  for (const [label, value] of leftRows) {
-    doc.setTextColor(55, 65, 81)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    doc.text(label, margin, ly)
-    doc.setTextColor(17, 24, 39)
-    doc.setFont('helvetica', 'bold')
-    doc.text(value, margin + innerColW - 4, ly, { align: 'right' })
-    ly += 15
-  }
-
-  // Right: Earnings
-  const rx = margin + innerColW + colGap
-  doc.setTextColor(107, 114, 128)
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'bold')
-  doc.text('EARNINGS', rx, y)
-  doc.setDrawColor(6, 78, 59)
-  doc.line(rx, y + 4, rx + innerColW, y + 4)
-
+// Build the payslip HTML string — mirrors the on-screen payslip-preview.tsx layout
+function buildPayslipHTML(data: any): string {
+  const { result, driver, company, traffic, penalties } = data
+  const penaltyEntries = Object.entries(penalties).filter(([_, v]) => (v as number) > 0)
   const baseSalaryLabel = result.salaryDivisorMode === 'orders_based_mode' ? 'Base Salary' : 'Adjusted Base Salary'
   const baseSalaryValue = result.salaryDivisorMode === 'orders_based_mode'
     ? result.baseSalaryEquivalent
     : result.adjustedBaseSalary
-
-  let rry = y + 20
-  doc.setTextColor(55, 65, 81)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-  doc.text(baseSalaryLabel, rx, rry)
-  doc.setTextColor(17, 24, 39)
-  doc.setFont('helvetica', 'bold')
-  doc.text(`SAR ${baseSalaryValue.toFixed(2)}`, rx + innerColW - 4, rry, { align: 'right' })
-  rry += 15
-  if (result.bonusAmount > 0) {
-    doc.setTextColor(55, 65, 81)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Performance Bonus', rx, rry)
-    doc.setTextColor(5, 150, 105)
-    doc.setFont('helvetica', 'bold')
-    doc.text(`+SAR ${result.bonusAmount.toFixed(2)}`, rx + innerColW - 4, rry, { align: 'right' })
-    rry += 15
-  }
-  rry += 6
-  doc.setDrawColor(6, 78, 59)
-  doc.setLineWidth(1)
-  doc.line(rx, rry - 4, rx + innerColW, rry - 4)
-  doc.setTextColor(6, 78, 59)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.text('Gross Salary', rx, rry + 8)
-  doc.text(`SAR ${result.grossSalaryBeforePenalties.toFixed(2)}`, rx + innerColW - 4, rry + 8, { align: 'right' })
-  rry += 18
-
-  // Deductions table
-  y = Math.max(ly, rry) + 14
-  const penaltyEntries = Object.entries(penalties).filter(([_, v]) => (v as number) > 0)
   const totalDeductions = result.totalOtherPenalties + result.trafficViolationsDeduction + result.missingOrderDeduction
+  const attainmentPct = result.selectedTargetThreshold > 0
+    ? ((result.completedOrders / result.selectedTargetThreshold) * 100).toFixed(1)
+    : 'N/A'
 
-  const deductionBody: any[] = []
+  const PENALTY_LABELS: Record<string, { en: string; ar: string }> = {
+    acceptance: { en: 'Acceptance Penalty', ar: 'غرامة معدل القبول' },
+    contact: { en: 'Contact Penalty', ar: 'غرامة معدل التواصل' },
+    stacking: { en: 'Stacking Deduction', ar: 'خصم الطلبات المتعددة' },
+    declined: { en: 'Declined Penalty', ar: 'غرامة الرفض' },
+    late: { en: 'Late Penalty', ar: 'غرامة التأخير' },
+    noshow: { en: 'No-Show Penalty', ar: 'غرامة عدم الحضور' },
+    noshow_special: { en: 'No-Show Special Cities', ar: 'غرامة عدم الحضور للمدن الخاصة' },
+    daily_acceptance: { en: 'Daily Acceptance Penalty', ar: 'غرامة معدل القبول اليومي' },
+    missed_days: { en: 'Missed Days Penalty', ar: 'غرامة الأيام المفقودة' },
+    rider_balance: { en: 'Rider Balance Deduction', ar: 'خصم رصيد المندوب' },
+    car_deduction: { en: 'Car Deduction', ar: 'خصم السيارة' },
+    tga_deduction: { en: 'TGA Deduction', ar: 'خصم TGA' },
+  }
+  const BAND_LABELS: Record<string, { en: string; ar: string }> = {
+    top: { en: 'Top Performer', ar: 'أفضل أداء' },
+    high: { en: 'High', ar: 'عالي' },
+    average: { en: 'Average', ar: 'متوسط' },
+    low: { en: 'Low', ar: 'منخفض' },
+    bottom: { en: 'Bottom', ar: 'الأقل' },
+  }
+
+  const band = BAND_LABELS[result.performanceBand] ?? { en: result.performanceBand, ar: '' }
+
+  // Build deductions rows
+  const deductionRows: string[] = []
   if (result.missingOrderDeduction > 0) {
-    deductionBody.push([
-      'Missing Order Deduction  ·  خصم الطلبات الناقصة',
-      `- ${result.missingOrderDeduction.toFixed(2)}`,
-    ])
+    deductionRows.push(`
+      <tr style="border-bottom: 1px solid #f3f4f6; background: #fff7ed;">
+        <td style="padding: 6px 10px; font-weight: 500;">
+          Missing Order Deduction
+          <span style="font-size: 10px; color: #9ca3af; margin-left: 6px;" dir="rtl">خصم الطلبات الناقصة</span>
+        </td>
+        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #9a3412;">-${result.missingOrderDeduction.toFixed(2)}</td>
+      </tr>`)
   }
   for (const [key, val] of penaltyEntries) {
-    deductionBody.push([
-      `${PENALTY_LABELS[key]?.en ?? key}  ·  ${PENALTY_LABELS[key]?.ar ?? ''}`,
-      `- ${(val as number).toFixed(2)}`,
-    ])
+    const lbl = PENALTY_LABELS[key] ?? { en: key, ar: '' }
+    deductionRows.push(`
+      <tr style="border-bottom: 1px solid #f3f4f6;">
+        <td style="padding: 6px 10px;">
+          ${lbl.en}
+          <span style="font-size: 10px; color: #9ca3af; margin-left: 6px;" dir="rtl">${lbl.ar}</span>
+        </td>
+        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #b91c1c;">-${(val as number).toFixed(2)}</td>
+      </tr>`)
   }
   if (result.trafficViolationsDeduction > 0) {
-    deductionBody.push([
-      'Traffic Violations  ·  المخالفات المرورية',
-      `- ${result.trafficViolationsDeduction.toFixed(2)}`,
-    ])
+    deductionRows.push(`
+      <tr style="border-bottom: 1px solid #f3f4f6; background: #fffbeb;">
+        <td style="padding: 6px 10px; font-weight: 500;">
+          Traffic Violations
+          <span style="font-size: 10px; color: #9ca3af; margin-left: 6px;" dir="rtl">المخالفات المرورية</span>
+        </td>
+        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #92400e;">-${result.trafficViolationsDeduction.toFixed(2)}</td>
+      </tr>`)
+  }
+  if (deductionRows.length === 0) {
+    deductionRows.push(`<tr><td colspan="2" style="padding: 10px; text-align: center; color: #9ca3af;">No deductions applied</td></tr>`)
   }
 
-  autoTable(doc, {
-    startY: y,
-    head: [['Description  ·  الوصف', 'Amount (SAR)']],
-    body: deductionBody.length > 0 ? deductionBody : [['No deductions applied', '0.00']],
-    foot: [[
-      'Total Deductions  ·  إجمالي الخصومات',
-      `- ${totalDeductions.toFixed(2)}`,
-    ]],
-    theme: 'striped',
-    headStyles: { fillColor: [185, 28, 28], textColor: 255, fontSize: 9, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 9, textColor: [17, 24, 39] },
-    footStyles: { fillColor: [254, 242, 242], textColor: [127, 29, 29], fontSize: 10, fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: (pageWidth - margin * 2) * 0.7 },
-      1: { cellWidth: (pageWidth - margin * 2) * 0.3, halign: 'right', font: 'courier' },
-    },
-    margin: { left: margin, right: margin },
+  // Build traffic detail rows
+  const trafficRows: string[] = (traffic || []).map((t: any) => `
+    <tr style="border-bottom: 1px solid #f3f4f6;">
+      <td style="padding: 4px 8px; font-size: 10px;">${new Date(t.ticketDate).toLocaleDateString('en-GB')}</td>
+      <td style="padding: 4px 8px; font-size: 10px;">${t.violationType}</td>
+      <td style="padding: 4px 8px; font-size: 10px; text-transform: capitalize;">${t.status}</td>
+      <td style="padding: 4px 8px; font-size: 10px; text-align: right; font-variant-numeric: tabular-nums;">${t.amount.toFixed(2)}</td>
+    </tr>`).join('')
+
+  // Logo (if present)
+  const logoBlock = company?.logo
+    ? `<div style="margin-left: 20px;"><img src="${company.logo}" alt="Logo" style="max-height: 70px; max-width: 140px; object-fit: contain; background: white; padding: 6px; border-radius: 6px;" crossorigin="anonymous"/></div>`
+    : `<div style="text-align: right;">
+        <div style="font-size: 9px; opacity: 0.7; letter-spacing: 2px; text-transform: uppercase;">Pay Period</div>
+        <div style="font-size: 18px; font-weight: 600; margin-top: 4px;">${result.payrollMonth}</div>
+        <div style="font-size: 9px; opacity: 0.6; margin-top: 4px;">${new Date().toLocaleDateString('en-GB')}</div>
+      </div>`
+
+  const payPeriodStrip = company?.logo
+    ? `<div style="padding: 8px 36px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-size: 10px; color: #6b7280;"><span style="font-weight: 600;">Pay Period:</span> ${result.payrollMonth}</div>
+        <div style="font-size: 10px; color: #9ca3af;">Generated: ${new Date().toLocaleDateString('en-GB')}</div>
+      </div>`
+    : ''
+
+  return `
+<div style="background: #ffffff; color: #000000; width: 800px; box-sizing: border-box; font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif;">
+  <!-- Premium Header -->
+  <div style="background: #047857; background-image: linear-gradient(135deg, #064e3b 0%, #047857 100%); color: #ffffff; padding: 32px 36px; display: flex; justify-content: space-between; align-items: flex-start;">
+    <div style="flex: 1;">
+      <div style="font-size: 9px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.7;">Salary Statement · كشف راتب</div>
+      <div style="font-size: 22px; font-weight: 700; margin-top: 6px; letter-spacing: -0.3px;">${company?.name || 'Nokhaba Tatweer for Trading'}</div>
+      <div style="font-size: 14px; opacity: 0.9; margin-top: 2px;" dir="rtl">${company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</div>
+      <div style="font-size: 10px; opacity: 0.7; margin-top: 8px;">${company?.address || 'Riyadh, Saudi Arabia'} · VAT: ${company?.vatNumber || 'N/A'}</div>
+    </div>
+    ${logoBlock}
+  </div>
+  ${payPeriodStrip}
+
+  <!-- Driver Identity -->
+  <div style="padding: 18px 36px; border-bottom: 1px solid #e5e7eb; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+    ${[
+      ['Driver Name', 'اسم السائق', result.driverName, false],
+      ['Rider ID', 'معرف المندوب', result.riderId, true],
+      ['Contract', 'العقد', result.contractName, true],
+      ['Vehicle Type', 'نوع المركبة', result.vehicleType, false],
+    ].map(([en, ar, val, mono]: any) => `
+      <div>
+        <div style="font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: #6b7280;">${en}</div>
+        <div style="font-size: 9px; color: #9ca3af;" dir="rtl">${ar}</div>
+        <div style="font-size: 14px; font-weight: 600; margin-top: 3px; ${mono ? 'font-family: monospace;' : ''}">${val}</div>
+      </div>
+    `).join('')}
+  </div>
+
+  <!-- Performance strip -->
+  <div style="padding: 10px 36px; background: #f0fdf4; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+    <div><span style="color: #6b7280;">Performance · الأداء: </span><span style="font-weight: 600; color: #065f46;">${band.en} · ${band.ar}</span></div>
+    <div><span style="color: #6b7280;">Target Attainment · الإنجاز: </span><span style="font-weight: 600; color: #065f46;">${attainmentPct}%</span></div>
+  </div>
+
+  <!-- Body two columns -->
+  <div style="padding: 20px 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px;">
+    <!-- Working Summary -->
+    <div>
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #064e3b;">Working Summary · ملخص العمل</div>
+      ${[
+        ['Completed Orders', 'الطلبات المكتملة', result.completedOrders],
+        ['Target Orders', 'الهدف', result.selectedTargetThreshold.toFixed(0)],
+        ['Working Days', 'أيام العمل', result.actualWorkingDays.toFixed(0)],
+        ['Working Hours', 'ساعات العمل', result.workingHours.toFixed(1)],
+        ...(result.inactiveReason && result.inactiveReason !== 'Active' ? [['Inactive Reason', 'سبب عدم النشاط', result.inactiveReason]] : []),
+      ].map(([en, ar, val]: any) => `
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px dotted #e5e7eb;">
+          <div>
+            <span style="font-size: 11px; color: #374151;">${en}</span>
+            <span style="font-size: 10px; color: #9ca3af; margin-left: 5px;" dir="rtl">${ar}</span>
+          </div>
+          <span style="font-size: 11px; font-weight: 500; color: #111827; font-variant-numeric: tabular-nums;">${val}</span>
+        </div>
+      `).join('')}
+    </div>
+    <!-- Earnings -->
+    <div>
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #064e3b;">Earnings · الأرباح</div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px dotted #e5e7eb;">
+        <div>
+          <span style="font-size: 11px; color: #374151;">${baseSalaryLabel}</span>
+          <span style="font-size: 10px; color: #9ca3af; margin-left: 5px;" dir="rtl">الراتب الأساسي</span>
+        </div>
+        <span style="font-size: 11px; font-weight: 500; color: #111827; font-variant-numeric: tabular-nums;">SAR ${baseSalaryValue.toFixed(2)}</span>
+      </div>
+      ${result.bonusAmount > 0 ? `
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px dotted #e5e7eb;">
+          <div>
+            <span style="font-size: 11px; color: #374151;">Performance Bonus</span>
+            <span style="font-size: 10px; color: #9ca3af; margin-left: 5px;" dir="rtl">مكافأة الأداء</span>
+          </div>
+          <span style="font-size: 11px; font-weight: 500; color: #059669; font-variant-numeric: tabular-nums;">+SAR ${result.bonusAmount.toFixed(2)}</span>
+        </div>
+      ` : ''}
+      <div style="margin-top: 8px; padding-top: 10px; border-top: 2px solid #064e3b;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <div>
+            <span style="font-size: 13px; color: #374151; font-weight: 600;">Gross Salary</span>
+            <span style="font-size: 10px; color: #9ca3af; margin-left: 5px;" dir="rtl">إجمالي الراتب</span>
+          </div>
+          <span style="font-size: 13px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums;">SAR ${result.grossSalaryBeforePenalties.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deductions table -->
+  <div style="padding: 0 36px 18px;">
+    <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #b91c1c;">Deductions · الخصومات</div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+      <thead>
+        <tr style="background: #fef2f2; color: #7f1d1d;">
+          <th style="text-align: left; padding: 7px 10px; font-weight: 600; font-size: 10px;">Description · الوصف</th>
+          <th style="text-align: right; padding: 7px 10px; font-weight: 600; font-size: 10px;">Amount (SAR)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${deductionRows.join('')}
+        <tr style="font-weight: 700; background: #fef2f2; color: #7f1d1d;">
+          <td style="padding: 9px 10px; border-top: 2px solid #b91c1c;">Total Deductions · إجمالي الخصومات</td>
+          <td style="padding: 9px 10px; text-align: right; font-variant-numeric: tabular-nums; border-top: 2px solid #b91c1c;">-${totalDeductions.toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Traffic detail (if any) -->
+  ${traffic && traffic.length > 0 ? `
+    <div style="padding: 0 36px 18px;">
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #92400e;">Traffic Tickets Detail · تفاصيل المخالفات</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+        <thead>
+          <tr style="background: #fffbeb; color: #92400e;">
+            <th style="text-align: left; padding: 4px 8px; font-size: 9px;">Date</th>
+            <th style="text-align: left; padding: 4px 8px; font-size: 9px;">Type</th>
+            <th style="text-align: left; padding: 4px 8px; font-size: 9px;">Status</th>
+            <th style="text-align: right; padding: 4px 8px; font-size: 9px;">Amount (SAR)</th>
+          </tr>
+        </thead>
+        <tbody>${trafficRows}</tbody>
+      </table>
+    </div>
+  ` : ''}
+
+  <!-- Final Net Salary -->
+  <div style="margin: 0 36px 18px; padding: 22px 26px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 10px; border: 2px solid #064e3b;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <div style="font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #065f46; font-weight: 600;">Final Net Salary · صافي الراتب النهائي</div>
+        <div style="font-size: 10px; color: #047857; margin-top: 4px;">Payable to: ${driver?.beneficiaryName || result.driverName}${driver?.bankName ? ' · ' + driver.bankName : ''}</div>
+      </div>
+      <div style="text-align: right;">
+        <div style="font-size: 30px; font-weight: 800; color: #064e3b; font-variant-numeric: tabular-nums; letter-spacing: -0.8px;">SAR ${result.finalNetSalary.toFixed(2)}</div>
+        <div style="font-size: 10px; color: #047857; margin-top: 2px;">${company?.currency || 'SAR'} · ${result.payrollMonth}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer + Two signatures -->
+  <div style="padding: 20px 36px; border-top: 1px solid #e5e7eb; background: #f9fafb; border-radius: 0 0 10px 10px;">
+    <div style="font-size: 10px; color: #6b7280; margin-bottom: 18px; text-align: center;">
+      ${company?.footerNote || 'This is a computer-generated payslip and does not require a physical signature.'}
+      <div style="margin-top: 3px;" dir="rtl">${company?.footerNoteAr || 'هذه قسيمة راتب مُولّدة آليًا ولا تتطلب توقيعًا يدويًا.'}</div>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 24px;">
+      <!-- Accounting Manager -->
+      <div style="text-align: center;">
+        ${company?.signatureImg
+          ? `<div style="height: 50px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px;"><img src="${company.signatureImg}" alt="Acc Mgr" style="max-height: 45px; object-fit: contain;" crossorigin="anonymous"/></div>`
+          : `<div style="height: 50px; border-bottom: 1.5px solid #374151; margin-bottom: 4px;"></div>`
+        }
+        <div style="font-size: 11px; font-weight: 600; color: #374151;">${company?.accManagerName || 'Accounting Manager'}</div>
+        <div style="font-size: 10px; color: #6b7280;" dir="rtl">مدير الحسابات</div>
+      </div>
+      <!-- Driver -->
+      <div style="text-align: center;">
+        ${company?.riderSignatureImg
+          ? `<div style="height: 50px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px;"><img src="${company.riderSignatureImg}" alt="Driver" style="max-height: 45px; object-fit: contain;" crossorigin="anonymous"/></div>`
+          : `<div style="height: 50px; border-bottom: 1.5px solid #374151; margin-bottom: 4px;"></div>`
+        }
+        <div style="font-size: 11px; font-weight: 600; color: #374151;">Driver Signature</div>
+        <div style="font-size: 10px; color: #6b7280;" dir="rtl">توقيع السائق</div>
+      </div>
+    </div>
+  </div>
+</div>`
+}
+
+// Legacy sync stubs (for backward compat — but async now)
+export function generatePayslipPDF(data: any) {
+  // Fire-and-forget async download — caller doesn't await
+  generatePayslipPDFDownload(data).catch(err => {
+    console.error('PDF generation failed:', err)
+    alert('PDF generation failed. Please try again.')
   })
+}
 
-  let tableEndY = (doc as any).lastAutoTable?.finalY ?? y + 60
-
-  if (traffic && traffic.length > 0) {
-    autoTable(doc, {
-      startY: tableEndY + 12,
-      head: [['Date', 'Type', 'Status', 'Amount (SAR)']],
-      body: traffic.map((t: any) => [
-        new Date(t.ticketDate).toLocaleDateString('en-GB'),
-        t.violationType,
-        t.status,
-        t.amount.toFixed(2),
-      ]),
-      theme: 'striped',
-      headStyles: { fillColor: [146, 64, 14], textColor: 255, fontSize: 8 },
-      bodyStyles: { fontSize: 8 },
-      columnStyles: { 3: { halign: 'right', font: 'courier' } },
-      margin: { left: margin, right: margin },
-    })
-    tableEndY = (doc as any).lastAutoTable?.finalY ?? tableEndY + 40
-  }
-
-  // Final Net Salary
-  y = tableEndY + 20
-  if (y > pageHeight - 200) { doc.addPage(); y = 50 }
-
-  doc.setFillColor(236, 253, 245)
-  doc.roundedRect(margin, y, pageWidth - margin * 2, 82, 10, 10, 'F')
-  doc.setDrawColor(6, 78, 59)
-  doc.setLineWidth(2)
-  doc.roundedRect(margin, y, pageWidth - margin * 2, 82, 10, 10, 'S')
-
-  doc.setTextColor(6, 95, 70)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.text('FINAL NET SALARY  ·  صافي الراتب النهائي', margin + 18, y + 24)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(4, 120, 87)
-  const payableLine = `Payable to: ${driver?.beneficiaryName || result.driverName}${driver?.bankName ? '  ·  ' + driver.bankName : ''}`
-  doc.text(payableLine, margin + 18, y + 40)
-
-  doc.setTextColor(6, 78, 59)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(28)
-  doc.text(`SAR ${result.finalNetSalary.toFixed(2)}`, pageWidth - margin - 18, y + 40, { align: 'right' })
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(4, 120, 87)
-  doc.text(`${company?.currency || 'SAR'}  ·  ${result.payrollMonth}`, pageWidth - margin - 18, y + 58, { align: 'right' })
-
-  // Footer + Two signatures
-  y += 102
-  if (y > pageHeight - 140) { doc.addPage(); y = 50 }
-
-  doc.setDrawColor(229, 231, 235)
-  doc.setLineWidth(0.5)
-  doc.line(margin, y, pageWidth - margin, y)
-  doc.setTextColor(107, 114, 128)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.text(
-    company?.footerNote || 'This is a computer-generated payslip and does not require a physical signature.',
-    pageWidth / 2, y + 14, { align: 'center' }
-  )
-
-  y += 40
-  const sigColW = (pageWidth - margin * 2) / 2
-  const sigGap = 30
-
-  // Accounting Manager signature
-  const sig1X = margin + 30
-  const sig1LineEnd = sig1X + sigColW - sigGap - 30
-  if (company?.signatureImg) {
-    try {
-      const imgFormat = company.signatureImg.startsWith('data:image/png') ? 'PNG'
-        : company.signatureImg.startsWith('data:image/jpeg') ? 'JPEG'
-        : 'PNG'
-      doc.addImage(company.signatureImg, imgFormat, sig1X, y - 20, Math.min(sigColW - sigGap - 60, 120), 30, undefined, 'FAST')
-    } catch (e) {
-      doc.setDrawColor(55, 65, 81); doc.setLineWidth(1); doc.line(sig1X, y, sig1LineEnd, y)
-    }
-  } else {
-    doc.setDrawColor(55, 65, 81); doc.setLineWidth(1); doc.line(sig1X, y, sig1LineEnd, y)
-  }
-  doc.setTextColor(55, 65, 81); doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
-  doc.text(company?.accManagerName || 'Accounting Manager', (sig1X + sig1LineEnd) / 2, y + 14, { align: 'center' })
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(107, 114, 128)
-  doc.text('مدير الحسابات', (sig1X + sig1LineEnd) / 2, y + 26, { align: 'center' })
-
-  // Driver signature
-  const sig2X = margin + sigColW + 30
-  const sig2LineEnd = sig2X + sigColW - sigGap - 30
-  if (company?.riderSignatureImg) {
-    try {
-      const imgFormat = company.riderSignatureImg.startsWith('data:image/png') ? 'PNG'
-        : company.riderSignatureImg.startsWith('data:image/jpeg') ? 'JPEG'
-        : 'PNG'
-      doc.addImage(company.riderSignatureImg, imgFormat, sig2X, y - 20, Math.min(sigColW - sigGap - 60, 120), 30, undefined, 'FAST')
-    } catch (e) {
-      doc.setDrawColor(55, 65, 81); doc.setLineWidth(1); doc.line(sig2X, y, sig2LineEnd, y)
-    }
-  } else {
-    doc.setDrawColor(55, 65, 81); doc.setLineWidth(1); doc.line(sig2X, y, sig2LineEnd, y)
-  }
-  doc.setTextColor(55, 65, 81); doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
-  doc.text('Driver Signature', (sig2X + sig2LineEnd) / 2, y + 14, { align: 'center' })
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(107, 114, 128)
-  doc.text('توقيع السائق', (sig2X + sig2LineEnd) / 2, y + 26, { align: 'center' })
+export async function generatePayslipPDFBlob(data: any): Promise<string> {
+  return generatePayslipPDFBlobFromData(data)
 }

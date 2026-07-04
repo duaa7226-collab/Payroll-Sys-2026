@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Download, Printer } from 'lucide-react'
+import { Download, Printer, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { generatePayslipPDF, generatePayslipPDFBlob } from '@/lib/payslip-pdf'
+import { generatePayslipPDFDownload, generatePayslipPDFBlob } from '@/lib/payslip-pdf'
 import { toast } from 'sonner'
 
 const PENALTY_LABELS: Record<string, { en: string; ar: string }> = {
@@ -32,6 +32,7 @@ const BAND_LABELS: Record<string, { en: string; ar: string }> = {
 export function PayslipPreview({ resultId }: { resultId: string }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
 
   useEffect(() => {
     fetch(`/api/payslip?resultId=${resultId}`)
@@ -46,22 +47,37 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
 
   const { result, driver, company, traffic, penalties } = data
 
-  const handleDownload = () => generatePayslipPDF(data)
-  const handlePrint = () => {
+  const handleDownload = async () => {
+    setGenerating(true)
     try {
-      const blobUrl = generatePayslipPDFBlob(data)
-      // Open PDF in new tab — user can use browser's Print from there
+      await generatePayslipPDFDownload(data)
+      toast.success('PDF downloaded')
+    } catch (e: any) {
+      console.error(e)
+      toast.error('Download failed: ' + (e.message || 'unknown error'))
+    } finally {
+      setGenerating(false)
+    }
+  }
+  const handlePrint = async () => {
+    setGenerating(true)
+    try {
+      const blobUrl = await generatePayslipPDFBlob(data)
       const newWindow = window.open(blobUrl, '_blank')
       if (!newWindow) {
         toast.error('Pop-up blocked — please allow pop-ups to print')
-        // Fallback: just download
-        generatePayslipPDF(data)
+        // Fallback to download
+        await generatePayslipPDFDownload(data)
       } else {
         toast.success('PDF opened in new tab — use Ctrl+P or Cmd+P to print')
       }
-    } catch (e) {
-      toast.error('Print failed — try Download PDF instead')
-      generatePayslipPDF(data)
+    } catch (e: any) {
+      console.error(e)
+      toast.error('Print failed: ' + (e.message || 'unknown error'))
+      // Fallback to download
+      try { await generatePayslipPDFDownload(data) } catch {}
+    } finally {
+      setGenerating(false)
     }
   }
 
@@ -82,11 +98,13 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
           Payslip Preview · {result.payrollMonth}
         </h3>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="mr-1 h-3.5 w-3.5" /> Print
+          <Button variant="outline" size="sm" onClick={handlePrint} disabled={generating}>
+            {generating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Printer className="mr-1 h-3.5 w-3.5" />}
+            {generating ? 'Generating...' : 'Print'}
           </Button>
-          <Button size="sm" onClick={handleDownload}>
-            <Download className="mr-1 h-3.5 w-3.5" /> Download PDF
+          <Button size="sm" onClick={handleDownload} disabled={generating}>
+            {generating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+            {generating ? 'Generating...' : 'Download PDF'}
           </Button>
         </div>
       </div>
