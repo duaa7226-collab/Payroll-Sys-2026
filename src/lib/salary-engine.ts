@@ -163,11 +163,13 @@ export function calculateDriverSalary(
   let salaryPerOrder = monthlyBaseSalary / monthlyTargetOrders
   if (roundSalaryPerOrder) salaryPerOrder = Math.round(salaryPerOrder * 100) / 100
 
-  // Base salary equivalent by orders (orders-based mode)
-  const baseSalaryEquivalent = raw.completedOrders * salaryPerOrder
-
   // Selected target threshold
   const selectedTargetThreshold = useActualWorkingDaysForTarget ? adjustedTargetOrders : monthlyTargetOrders
+
+  // Base salary equivalent — TARGET × salary_per_order (not completed!)
+  // This is the guaranteed base if the driver meets the prorated target.
+  // Extra orders are rewarded via bonus; missing orders are deducted.
+  const baseSalaryEquivalent = selectedTargetThreshold * salaryPerOrder
 
   // Extra / missing orders
   const extraOrders = Math.max(raw.completedOrders - selectedTargetThreshold, 0)

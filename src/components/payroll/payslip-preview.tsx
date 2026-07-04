@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { Download, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { generatePayslipPDF } from '@/lib/payslip-pdf'
+import { generatePayslipPDF, generatePayslipPDFBlob } from '@/lib/payslip-pdf'
+import { toast } from 'sonner'
 
 const PENALTY_LABELS: Record<string, { en: string; ar: string }> = {
   acceptance: { en: 'Acceptance Penalty', ar: 'غرامة معدل القبول' },
@@ -46,7 +47,23 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
   const { result, driver, company, traffic, penalties } = data
 
   const handleDownload = () => generatePayslipPDF(data)
-  const handlePrint = () => window.print()
+  const handlePrint = () => {
+    try {
+      const blobUrl = generatePayslipPDFBlob(data)
+      // Open PDF in new tab — user can use browser's Print from there
+      const newWindow = window.open(blobUrl, '_blank')
+      if (!newWindow) {
+        toast.error('Pop-up blocked — please allow pop-ups to print')
+        // Fallback: just download
+        generatePayslipPDF(data)
+      } else {
+        toast.success('PDF opened in new tab — use Ctrl+P or Cmd+P to print')
+      }
+    } catch (e) {
+      toast.error('Print failed — try Download PDF instead')
+      generatePayslipPDF(data)
+    }
+  }
 
   const penaltyEntries = Object.entries(penalties).filter(([_, v]) => (v as number) > 0)
   const baseSalaryLabel = result.salaryDivisorMode === 'orders_based_mode' ? 'Base Salary' : 'Adjusted Base Salary'
