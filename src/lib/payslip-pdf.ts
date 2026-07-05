@@ -204,16 +204,16 @@ function buildPayslipHTML(data: any): string {
 
   const band = BAND_LABELS[result.performanceBand] ?? { en: result.performanceBand, ar: '' }
 
-  // Build deductions rows
+  // Build deductions rows — Arabic on separate line below English
   const deductionRows: string[] = []
   if (result.missingOrderDeduction > 0) {
     deductionRows.push(`
       <tr style="border-bottom: 1px solid #f3f4f6; background: #fff7ed;">
         <td style="padding: 6px 10px; font-weight: 500;">
-          Missing Order Deduction
-          <span style="font-size: 10px; color: #9ca3af; margin-left: 6px;" dir="rtl">خصم الطلبات الناقصة</span>
+          <div style="font-size: 11px;">Missing Order Deduction</div>
+          <div style="font-size: 10px; color: #9ca3af;" dir="rtl">خصم الطلبات الناقصة</div>
         </td>
-        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #9a3412;">-${result.missingOrderDeduction.toFixed(2)}</td>
+        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #9a3412; vertical-align: top;">-${result.missingOrderDeduction.toFixed(2)}</td>
       </tr>`)
   }
   for (const [key, val] of penaltyEntries) {
@@ -221,20 +221,20 @@ function buildPayslipHTML(data: any): string {
     deductionRows.push(`
       <tr style="border-bottom: 1px solid #f3f4f6;">
         <td style="padding: 6px 10px;">
-          ${lbl.en}
-          <span style="font-size: 10px; color: #9ca3af; margin-left: 6px;" dir="rtl">${lbl.ar}</span>
+          <div style="font-size: 11px;">${lbl.en}</div>
+          <div style="font-size: 10px; color: #9ca3af;" dir="rtl">${lbl.ar}</div>
         </td>
-        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #b91c1c;">-${(val as number).toFixed(2)}</td>
+        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #b91c1c; vertical-align: top;">-${(val as number).toFixed(2)}</td>
       </tr>`)
   }
   if (result.trafficViolationsDeduction > 0) {
     deductionRows.push(`
       <tr style="border-bottom: 1px solid #f3f4f6; background: #fffbeb;">
         <td style="padding: 6px 10px; font-weight: 500;">
-          Traffic Violations
-          <span style="font-size: 10px; color: #9ca3af; margin-left: 6px;" dir="rtl">المخالفات المرورية</span>
+          <div style="font-size: 11px;">Traffic Violations</div>
+          <div style="font-size: 10px; color: #9ca3af;" dir="rtl">المخالفات المرورية</div>
         </td>
-        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #92400e;">-${result.trafficViolationsDeduction.toFixed(2)}</td>
+        <td style="padding: 6px 10px; text-align: right; font-variant-numeric: tabular-nums; color: #92400e; vertical-align: top;">-${result.trafficViolationsDeduction.toFixed(2)}</td>
       </tr>`)
   }
   if (deductionRows.length === 0) {
@@ -271,7 +271,8 @@ function buildPayslipHTML(data: any): string {
   <!-- Premium Header -->
   <div style="background: #047857; background-image: linear-gradient(135deg, #064e3b 0%, #047857 100%); color: #ffffff; padding: 32px 36px; display: flex; justify-content: space-between; align-items: flex-start;">
     <div style="flex: 1;">
-      <div style="font-size: 9px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.7;">Salary Statement · <span dir="rtl">كشف راتب</span></div>
+      <div style="font-size: 9px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.7;">Salary Statement</div>
+      <div style="font-size: 14px; opacity: 0.9; margin-top: 1px;" dir="rtl">كشف راتب</div>
       <div style="font-size: 22px; font-weight: 700; margin-top: 6px; letter-spacing: -0.3px;">${company?.name || 'Nokhaba Tatweer for Trading'}</div>
       <div style="font-size: 14px; opacity: 0.9; margin-top: 2px;" dir="rtl">${company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</div>
       <div style="font-size: 10px; opacity: 0.7; margin-top: 8px;">${company?.address || 'Riyadh, Saudi Arabia'} · VAT: ${company?.vatNumber || 'N/A'}</div>
@@ -298,15 +299,25 @@ function buildPayslipHTML(data: any): string {
 
   <!-- Performance strip -->
   <div style="padding: 10px 36px; background: #f0fdf4; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
-    <div><span style="color: #6b7280;">Performance · <span dir="rtl">الأداء</span>: </span><span style="font-weight: 600; color: #065f46;">${band.en} · <span dir="rtl">${band.ar}</span></span></div>
-    <div><span style="color: #6b7280;">Target Attainment · <span dir="rtl">الإنجاز</span>: </span><span style="font-weight: 600; color: #065f46;">${attainmentPct}%</span></div>
+    <div>
+      <span style="color: #6b7280;">Performance: </span>
+      <span style="font-weight: 600; color: #065f46;">${band.en}</span>
+      <span style="font-size: 10px; color: #9ca3af; margin-left: 4px;" dir="rtl">(${band.ar})</span>
+    </div>
+    <div>
+      <span style="color: #6b7280;">Target Attainment: </span>
+      <span style="font-weight: 600; color: #065f46;">${attainmentPct}%</span>
+    </div>
   </div>
 
   <!-- Body two columns -->
   <div style="padding: 20px 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px;">
     <!-- Working Summary -->
     <div>
-      <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #064e3b;">Working Summary · <span dir="rtl">ملخص العمل</span></div>
+      <div style="margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #064e3b;">
+        <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase;">Working Summary</div>
+        <div style="font-size: 11px; color: #6b7280;" dir="rtl">ملخص العمل</div>
+      </div>
       ${[
         ['Completed Orders', 'الطلبات المكتملة', result.completedOrders],
         ['Target Orders', 'الهدف', result.selectedTargetThreshold.toFixed(0)],
@@ -316,8 +327,8 @@ function buildPayslipHTML(data: any): string {
       ].map(([en, ar, val]: any) => `
         <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px dotted #e5e7eb;">
           <div>
-            <span style="font-size: 11px; color: #374151;">${en}</span>
-            <span style="font-size: 10px; color: #9ca3af; margin-left: 5px;" dir="rtl">${ar}</span>
+            <div style="font-size: 11px; color: #374151;">${en}</div>
+            <div style="font-size: 10px; color: #9ca3af;" dir="rtl">${ar}</div>
           </div>
           <span style="font-size: 11px; font-weight: 500; color: #111827; font-variant-numeric: tabular-nums;">${val}</span>
         </div>
@@ -325,19 +336,22 @@ function buildPayslipHTML(data: any): string {
     </div>
     <!-- Earnings -->
     <div>
-      <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #064e3b;">Earnings · <span dir="rtl">الأرباح</span></div>
+      <div style="margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #064e3b;">
+        <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase;">Earnings</div>
+        <div style="font-size: 11px; color: #6b7280;" dir="rtl">الأرباح</div>
+      </div>
       <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px dotted #e5e7eb;">
         <div>
-          <span style="font-size: 11px; color: #374151;">${baseSalaryLabel}</span>
-          <span style="font-size: 10px; color: #9ca3af; margin-left: 5px;" dir="rtl">الراتب الأساسي</span>
+          <div style="font-size: 11px; color: #374151;">${baseSalaryLabel}</div>
+          <div style="font-size: 10px; color: #9ca3af;" dir="rtl">الراتب الأساسي</div>
         </div>
         <span style="font-size: 11px; font-weight: 500; color: #111827; font-variant-numeric: tabular-nums;">SAR ${baseSalaryValue.toFixed(2)}</span>
       </div>
       ${result.bonusAmount > 0 ? `
         <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px dotted #e5e7eb;">
           <div>
-            <span style="font-size: 11px; color: #374151;">Performance Bonus</span>
-            <span style="font-size: 10px; color: #9ca3af; margin-left: 5px;" dir="rtl">مكافأة الأداء</span>
+            <div style="font-size: 11px; color: #374151;">Performance Bonus</div>
+            <div style="font-size: 10px; color: #9ca3af;" dir="rtl">مكافأة الأداء</div>
           </div>
           <span style="font-size: 11px; font-weight: 500; color: #059669; font-variant-numeric: tabular-nums;">+SAR ${result.bonusAmount.toFixed(2)}</span>
         </div>
@@ -345,8 +359,8 @@ function buildPayslipHTML(data: any): string {
       <div style="margin-top: 8px; padding-top: 10px; border-top: 2px solid #064e3b;">
         <div style="display: flex; justify-content: space-between; align-items: baseline;">
           <div>
-            <span style="font-size: 13px; color: #374151; font-weight: 600;">Gross Salary</span>
-            <span style="font-size: 10px; color: #9ca3af; margin-left: 5px;" dir="rtl">إجمالي الراتب</span>
+            <div style="font-size: 13px; color: #374151; font-weight: 600;">Gross Salary</div>
+            <div style="font-size: 10px; color: #9ca3af;" dir="rtl">إجمالي الراتب</div>
           </div>
           <span style="font-size: 13px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums;">SAR ${result.grossSalaryBeforePenalties.toFixed(2)}</span>
         </div>
@@ -356,19 +370,25 @@ function buildPayslipHTML(data: any): string {
 
   <!-- Deductions table -->
   <div style="padding: 0 36px 18px;">
-    <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #b91c1c;">Deductions · <span dir="rtl">الخصومات</span></div>
+    <div style="margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #b91c1c;">
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase;">Deductions</div>
+      <div style="font-size: 11px; color: #6b7280;" dir="rtl">الخصومات</div>
+    </div>
     <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
       <thead>
         <tr style="background: #fef2f2; color: #7f1d1d;">
-          <th style="text-align: left; padding: 7px 10px; font-weight: 600; font-size: 10px;">Description · <span dir="rtl">الوصف</span></th>
+          <th style="text-align: left; padding: 7px 10px; font-weight: 600; font-size: 10px;">Description</th>
           <th style="text-align: right; padding: 7px 10px; font-weight: 600; font-size: 10px;">Amount (SAR)</th>
         </tr>
       </thead>
       <tbody>
         ${deductionRows.join('')}
         <tr style="font-weight: 700; background: #fef2f2; color: #7f1d1d;">
-          <td style="padding: 9px 10px; border-top: 2px solid #b91c1c;">Total Deductions · <span dir="rtl">إجمالي الخصومات</span></td>
-          <td style="padding: 9px 10px; text-align: right; font-variant-numeric: tabular-nums; border-top: 2px solid #b91c1c;">-${totalDeductions.toFixed(2)}</td>
+          <td style="padding: 9px 10px; border-top: 2px solid #b91c1c;">
+            <div>Total Deductions</div>
+            <div style="font-size: 10px; color: #7f1d1d;" dir="rtl">إجمالي الخصومات</div>
+          </td>
+          <td style="padding: 9px 10px; text-align: right; font-variant-numeric: tabular-nums; border-top: 2px solid #b91c1c; vertical-align: top;">-${totalDeductions.toFixed(2)}</td>
         </tr>
       </tbody>
     </table>
@@ -377,7 +397,10 @@ function buildPayslipHTML(data: any): string {
   <!-- Traffic detail (if any) -->
   ${traffic && traffic.length > 0 ? `
     <div style="padding: 0 36px 18px;">
-      <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #92400e;">Traffic Tickets Detail · <span dir="rtl">تفاصيل المخالفات</span></div>
+      <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #92400e;">
+        <div style="font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase;">Traffic Tickets Detail</div>
+        <div style="font-size: 11px; color: #6b7280;" dir="rtl">تفاصيل المخالفات</div>
+      </div>
       <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
         <thead>
           <tr style="background: #fffbeb; color: #92400e;">
@@ -396,7 +419,8 @@ function buildPayslipHTML(data: any): string {
   <div style="margin: 0 36px 18px; padding: 22px 26px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 10px; border: 2px solid #064e3b;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
       <div>
-        <div style="font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #065f46; font-weight: 600;">Final Net Salary · <span dir="rtl">صافي الراتب النهائي</span></div>
+        <div style="font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #065f46; font-weight: 600;">Final Net Salary</div>
+        <div style="font-size: 13px; color: #065f46; font-weight: 600; margin-top: 2px;" dir="rtl">صافي الراتب النهائي</div>
         <div style="font-size: 10px; color: #047857; margin-top: 4px;">Payable to: ${driver?.beneficiaryName || result.driverName}${driver?.bankName ? ' · ' + driver.bankName : ''}</div>
       </div>
       <div style="text-align: right;">
