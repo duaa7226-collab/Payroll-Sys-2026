@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import {
   Users, Search, ArrowUpDown, FileText, AlertTriangle, CheckCircle2,
-  ChevronRight, X, Download, FileSpreadsheet, Loader2
+  ChevronRight, X, Download, FileSpreadsheet, Loader2, FileStack
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,7 @@ import {
 import { PayslipPreview } from './payslip-preview'
 import { safeFetchJson } from '@/lib/safe-fetch'
 import { exportDriversToExcel } from '@/lib/excel-export'
+import { generatePayrollSummaryPDF } from '@/lib/payroll-summary-pdf'
 import { cn } from '@/lib/utils'
 
 const BAND_LABELS: Record<string, string> = {
@@ -49,6 +50,36 @@ export function DriversView({ runId, setRunId, onNavigate }: {
   const [selectedResult, setSelectedResult] = useState<any | null>(null)
   const [payslipOpen, setPayslipOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+
+  const handleExportSummary = async () => {
+    setSummaryLoading(true)
+    try {
+      // Fetch full payslip data for each rider
+      const ridersData = []
+      for (const r of results) {
+        const data = await safeFetchJson(`/api/payslip?resultId=${r.id}`, null)
+        if (data) {
+          ridersData.push(data)
+        }
+      }
+
+      if (ridersData.length === 0) {
+        alert('No rider data found')
+        return
+      }
+
+      const payrollMonth = results[0]?.payrollMonth || 'Payroll'
+      const company = ridersData[0]?.company || null
+
+      await generatePayrollSummaryPDF(ridersData, payrollMonth, company)
+    } catch (e: any) {
+      console.error('Summary PDF failed:', e)
+      alert('Summary PDF generation failed: ' + (e.message || ''))
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
 
   const handleExportExcel = async () => {
     setExporting(true)
@@ -122,6 +153,16 @@ export function DriversView({ runId, setRunId, onNavigate }: {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportSummary}
+            disabled={summaryLoading || results.length === 0}
+            className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400"
+          >
+            {summaryLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileStack className="mr-1 h-4 w-4" />}
+            {summaryLoading ? 'Generating...' : 'Summary PDF'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
