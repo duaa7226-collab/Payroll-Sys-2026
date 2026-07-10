@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import {
   Users, Search, ArrowUpDown, FileText, AlertTriangle, CheckCircle2,
-  ChevronRight, X, Download, FileSpreadsheet, Loader2, FileStack
+  ChevronRight, X, Download, FileSpreadsheet, Loader2, FileStack, FileBarChart
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,7 @@ import { PayslipPreview } from './payslip-preview'
 import { safeFetchJson } from '@/lib/safe-fetch'
 import { exportDriversToExcel } from '@/lib/excel-export'
 import { generatePayrollSummaryPDF } from '@/lib/payroll-summary-pdf'
+import { generateOnePageSummaryPDF } from '@/lib/one-page-summary-pdf'
 import { cn } from '@/lib/utils'
 
 const BAND_LABELS: Record<string, string> = {
@@ -51,6 +52,39 @@ export function DriversView({ runId, setRunId, onNavigate }: {
   const [payslipOpen, setPayslipOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [onePageLoading, setOnePageLoading] = useState(false)
+
+  const handleOnePageSummary = async () => {
+    setOnePageLoading(true)
+    try {
+      // Fetch company profile and rule summary
+      const [companyData, ruleData] = await Promise.all([
+        safeFetchJson('/api/company', null),
+        safeFetchJson('/api/rules?active=true', null),
+      ])
+      const company = companyData?.profile || null
+      let ruleSummary = null
+      if (ruleData?.snapshot) {
+        const s = ruleData.snapshot
+        ruleSummary = {
+          salaryMode: s.salary_mode === 'orders_based_mode' ? 'Orders-Based' : 'Days-Prorated',
+          monthlyBaseSalary: s.monthly_base_salary,
+          standardWorkingDays: s.standard_working_days,
+          monthlyTargetOrders: s.monthly_target_orders,
+          salaryPerOrderRate: (s.monthly_base_salary / s.monthly_target_orders),
+          bonusPerExtraOrder: s.bonus_per_extra_order,
+          deductionPerMissingOrder: s.deduction_per_missing_order,
+        }
+      }
+      const payrollMonth = results[0]?.payrollMonth || 'Payroll'
+      await generateOnePageSummaryPDF(results, payrollMonth, company, ruleSummary)
+    } catch (e: any) {
+      console.error('One-page summary failed:', e)
+      alert('One-page summary failed: ' + (e.message || ''))
+    } finally {
+      setOnePageLoading(false)
+    }
+  }
 
   const handleExportSummary = async () => {
     setSummaryLoading(true)
@@ -152,7 +186,17 @@ export function DriversView({ runId, setRunId, onNavigate }: {
             {stats.total} drivers · {stats.flagged} flagged · Avg net SAR {stats.avgNet.toFixed(2)}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOnePageSummary}
+            disabled={onePageLoading || results.length === 0}
+            className="border-amber-400 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400"
+          >
+            {onePageLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileBarChart className="mr-1 h-4 w-4" />}
+            {onePageLoading ? 'Generating...' : 'One-Page Summary'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
