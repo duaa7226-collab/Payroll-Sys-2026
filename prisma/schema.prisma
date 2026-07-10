@@ -175,6 +175,7 @@ model DriverResult {
   missingOrders            Int
   bonusAmount              Float
   missingOrderDeduction    Float
+  segmentPayment           Float    @default(0)
   // Penalties (JSON map)
   penaltiesJson            String   // {key: value}
   totalOtherPenalties      Float

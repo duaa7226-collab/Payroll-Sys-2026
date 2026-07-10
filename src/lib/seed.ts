@@ -132,6 +132,7 @@ async function main() {
         missingOrders: result.missingOrders,
         bonusAmount: result.bonusAmount,
         missingOrderDeduction: result.missingOrderDeduction,
+        segmentPayment: result.segmentPayment,
         penaltiesJson: JSON.stringify(result.penalties),
         totalOtherPenalties: result.totalOtherPenalties,
         trafficViolationsDeduction: result.trafficViolationsDeduction,

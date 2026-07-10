@@ -330,6 +330,15 @@ function buildPayslipHTML(data: any): string {
           <span style="font-size: 10px; font-weight: 500; color: #059669; font-variant-numeric: tabular-nums;">+SAR ${result.bonusAmount.toFixed(2)}</span>
         </div>
       ` : ''}
+      ${(result.segmentPayment || 0) > 0 ? `
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; border-bottom: 1px dotted #e5e7eb;">
+          <div>
+            <span style="font-size: 10px; color: #374151;">Segment Payment</span>
+            <span style="font-size: 9px; color: #9ca3af; margin-left: 3px;" dir="rtl">دفعة الشريحة</span>
+          </div>
+          <span style="font-size: 10px; font-weight: 500; color: #0891b2; font-variant-numeric: tabular-nums;">+SAR ${result.segmentPayment.toFixed(2)}</span>
+        </div>
+      ` : ''}
       <div style="margin-top: 4px; padding-top: 4px; border-top: 2px solid #064e3b;">
         <div style="display: flex; justify-content: space-between; align-items: baseline;">
           <div>

@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import {
   Users, Search, ArrowUpDown, FileText, AlertTriangle, CheckCircle2,
-  ChevronRight, X, Download
+  ChevronRight, X, Download, FileSpreadsheet, Loader2
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '@/components/ui/dialog'
 import { PayslipPreview } from './payslip-preview'
+import { safeFetchJson } from '@/lib/safe-fetch'
+import { exportDriversToExcel } from '@/lib/excel-export'
 import { cn } from '@/lib/utils'
 
 const BAND_LABELS: Record<string, string> = {
@@ -46,6 +48,37 @@ export function DriversView({ runId, setRunId, onNavigate }: {
   const [review, setReview] = useState('all')
   const [selectedResult, setSelectedResult] = useState<any | null>(null)
   const [payslipOpen, setPayslipOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportExcel = async () => {
+    setExporting(true)
+    try {
+      let ruleSummary = null
+      try {
+        const data = await safeFetchJson('/api/rules?active=true', null)
+        if (data?.snapshot) {
+          const s = data.snapshot
+          ruleSummary = {
+            salaryMode: s.salary_mode === 'orders_based_mode' ? 'Orders-Based' : 'Days-Prorated',
+            monthlyBaseSalary: s.monthly_base_salary,
+            standardWorkingDays: s.standard_working_days,
+            monthlyTargetOrders: s.monthly_target_orders,
+            dailyTargetRate: (s.monthly_target_orders / s.standard_working_days),
+            salaryPerOrderRate: (s.monthly_base_salary / s.monthly_target_orders),
+            bonusPerExtraOrder: s.bonus_per_extra_order,
+            deductionPerMissingOrder: s.deduction_per_missing_order,
+          }
+        }
+      } catch {}
+      const payrollMonth = results[0]?.payrollMonth || 'Payroll'
+      exportDriversToExcel({ results, payrollMonth, ruleSummary, companyName: 'Nokhaba Tatweer for Trading' })
+    } catch (e: any) {
+      console.error('Excel export failed:', e)
+      alert('Excel export failed: ' + (e.message || ''))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     if (!runId) {
@@ -89,6 +122,16 @@ export function DriversView({ runId, setRunId, onNavigate }: {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportExcel}
+            disabled={exporting || results.length === 0}
+            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+          >
+            {exporting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1 h-4 w-4" />}
+            {exporting ? 'Exporting...' : 'Export to Excel'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => onNavigate('payslips')}>
             <FileText className="mr-1 h-4 w-4" /> Bulk Payslips
           </Button>
@@ -160,6 +203,7 @@ export function DriversView({ runId, setRunId, onNavigate }: {
                   <th className="py-3 px-4 font-medium text-right">Target</th>
                   <th className="py-3 px-4 font-medium text-right">Days</th>
                   <th className="py-3 px-4 font-medium text-right">Gross (SAR)</th>
+                  <th className="py-3 px-4 font-medium text-right">Segment (SAR)</th>
                   <th className="py-3 px-4 font-medium text-right">Penalties (SAR)</th>
                   <th className="py-3 px-4 font-medium text-right">Traffic (SAR)</th>
                   <th className="py-3 px-4 font-medium text-right">Net (SAR)</th>
@@ -170,9 +214,9 @@ export function DriversView({ runId, setRunId, onNavigate }: {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={11} className="py-12 text-center text-muted-foreground">Loading...</td></tr>
+                  <tr><td colSpan={12} className="py-12 text-center text-muted-foreground">Loading...</td></tr>
                 ) : results.length === 0 ? (
-                  <tr><td colSpan={11} className="py-12 text-center text-muted-foreground">No drivers found</td></tr>
+                  <tr><td colSpan={12} className="py-12 text-center text-muted-foreground">No drivers found</td></tr>
                 ) : results.map((r) => (
                   <tr key={r.id} className="border-t border-border/60 hover:bg-muted/30 transition-colors">
                     <td className="py-3 px-4">
@@ -191,6 +235,7 @@ export function DriversView({ runId, setRunId, onNavigate }: {
                     <td className="py-3 px-4 text-right tabular-nums text-muted-foreground">{r.selectedTargetThreshold.toFixed(0)}</td>
                     <td className="py-3 px-4 text-right tabular-nums">{r.actualWorkingDays.toFixed(0)}</td>
                     <td className="py-3 px-4 text-right tabular-nums">{r.grossSalaryBeforePenalties.toFixed(2)}</td>
+                    <td className="py-3 px-4 text-right tabular-nums text-cyan-600">{(r.segmentPayment || 0).toFixed(2)}</td>
                     <td className="py-3 px-4 text-right tabular-nums text-rose-600">{r.totalOtherPenalties.toFixed(2)}</td>
                     <td className="py-3 px-4 text-right tabular-nums text-amber-600">{r.trafficViolationsDeduction.toFixed(2)}</td>
                     <td className="py-3 px-4 text-right tabular-nums font-bold text-emerald-600">{r.finalNetSalary.toFixed(2)}</td>
@@ -231,6 +276,7 @@ export function DriversView({ runId, setRunId, onNavigate }: {
                     <td className="py-3 px-4 text-right tabular-nums text-muted-foreground">{results.reduce((a, r) => a + r.selectedTargetThreshold, 0).toFixed(0)}</td>
                     <td className="py-3 px-4 text-right tabular-nums">{results.reduce((a, r) => a + r.actualWorkingDays, 0).toFixed(0)}</td>
                     <td className="py-3 px-4 text-right tabular-nums">{results.reduce((a, r) => a + r.grossSalaryBeforePenalties, 0).toFixed(2)}</td>
+                    <td className="py-3 px-4 text-right tabular-nums text-cyan-600">{results.reduce((a, r) => a + (r.segmentPayment || 0), 0).toFixed(2)}</td>
                     <td className="py-3 px-4 text-right tabular-nums text-rose-600">{results.reduce((a, r) => a + r.totalOtherPenalties, 0).toFixed(2)}</td>
                     <td className="py-3 px-4 text-right tabular-nums text-amber-600">{results.reduce((a, r) => a + r.trafficViolationsDeduction, 0).toFixed(2)}</td>
                     <td className="py-3 px-4 text-right tabular-nums text-emerald-600">{results.reduce((a, r) => a + r.finalNetSalary, 0).toFixed(2)}</td>

@@ -209,6 +209,9 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
             {result.bonusAmount > 0 && (
               <Row label="Performance Bonus" labelAr="مكافأة الأداء" value={`+SAR ${result.bonusAmount.toFixed(2)}`} accent="emerald" />
             )}
+            {(result.segmentPayment || 0) > 0 && (
+              <Row label="Segment Payment" labelAr="دفعة الشريحة" value={`+SAR ${result.segmentPayment.toFixed(2)}`} accent="emerald" />
+            )}
             <div style={{ marginTop: '8px', paddingTop: '10px', borderTop: '2px solid #064e3b' }}>
               <Row label="Gross Salary" labelAr="إجمالي الراتب" value={`SAR ${result.grossSalaryBeforePenalties.toFixed(2)}`} bold />
             </div>
