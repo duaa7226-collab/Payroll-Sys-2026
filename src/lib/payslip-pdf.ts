@@ -7,46 +7,19 @@ import html2canvas from 'html2canvas-pro'
 
 // Capture an HTML element as an A4 PDF — returns a blob URL for printing in new tab
 export async function generatePayslipPDFFromElement(element: HTMLElement): Promise<{ blobUrl: string; download: () => void }> {
-  // Clone the element into an isolated iframe to avoid parent CSS (Tailwind oklch) bleed
-  const iframe = document.createElement('iframe')
-  iframe.style.cssText = 'position:fixed; top:-10000px; left:0; width:850px; height:1200px; border:0; z-index:-1;'
-  document.body.appendChild(iframe)
+  // Render in hidden container in MAIN document — Cairo font already loaded via next/font/google
+  const container = document.createElement('div')
+  container.style.cssText = 'position: fixed; top: -10000px; left: 0; width: 800px; background: white; color: black; z-index: -1; font-family: var(--font-cairo), Cairo, sans-serif;'
+  container.innerHTML = element.innerHTML
+  document.body.appendChild(container)
+  ;(container as any).__payslipData = (element as any).__payslipData
 
   try {
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
-    if (!iframeDoc) throw new Error('Cannot access iframe document')
-
-    // Write minimal HTML with the payslip content — no Tailwind, no parent CSS
-    iframeDoc.open()
-    iframeDoc.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
-        <style>
-          * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; background: #ffffff; color: #000000; }
-          body { font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif; }
-          table { border-collapse: collapse; }
-          img { max-width: 100%; }
-        </style>
-      </head>
-      <body>${element.innerHTML}</body>
-      </html>
-    `)
-    iframeDoc.close()
-
-    // Wait for fonts to load
+    // Wait briefly for font to apply
     await new Promise(res => setTimeout(res, 500))
-    if (iframe.contentWindow?.document.fonts) {
-      try { await iframe.contentWindow.document.fonts.ready } catch {}
-    }
 
-    const target = iframeDoc.body.firstElementChild as HTMLElement
-    if (!target) throw new Error('No payslip element in iframe')
+    const target = container.firstElementChild as HTMLElement
+    if (!target) throw new Error('No payslip element')
 
     // Render with html2canvas
     const canvas = await html2canvas(target, {
@@ -109,7 +82,7 @@ export async function generatePayslipPDFFromElement(element: HTMLElement): Promi
 
     return { blobUrl, download }
   } finally {
-    document.body.removeChild(iframe)
+    try { document.body.removeChild(container) } catch {}
   }
 }
 

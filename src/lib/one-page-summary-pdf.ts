@@ -106,44 +106,19 @@ export async function generateOnePageSummaryPDF(
     payrollMonth, company, ruleSummary,
   })
 
-  // Render in hidden iframe
-  const iframe = document.createElement('iframe')
-  iframe.style.cssText = 'position:fixed; top:-10000px; left:0; width:850px; height:1200px; border:0; z-index:-1;'
-  document.body.appendChild(iframe)
+  // Render in hidden container in MAIN document — Cairo font is already loaded here via next/font/google
+  // This avoids the iframe font-loading issue where Google Fonts CDN fails to load
+  const container = document.createElement('div')
+  container.style.cssText = 'position: fixed; top: -10000px; left: 0; width: 800px; background: white; color: black; z-index: -1; font-family: var(--font-cairo), Cairo, sans-serif;'
+  container.innerHTML = html
+  document.body.appendChild(container)
 
   try {
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
-    if (!iframeDoc) throw new Error('Cannot access iframe document')
+    // Wait briefly for the already-loaded Cairo font to apply
+    await new Promise(res => setTimeout(res, 500))
 
-    iframeDoc.open()
-    iframeDoc.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
-        <style>
-          * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; background: #ffffff; color: #000000; width: 800px; height: 1131px; overflow: hidden; }
-          body { font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif; }
-          table { border-collapse: collapse; }
-          img { max-width: 100%; }
-        </style>
-      </head>
-      <body>${html}</body>
-      </html>
-    `)
-    iframeDoc.close()
-
-    await new Promise(res => setTimeout(res, 800))
-    if (iframe.contentWindow?.document.fonts) {
-      try { await iframe.contentWindow.document.fonts.ready } catch {}
-    }
-
-    const target = iframeDoc.body.firstElementChild as HTMLElement
-    if (!target) throw new Error('No summary element in iframe')
+    const target = container.firstElementChild as HTMLElement
+    if (!target) throw new Error('No summary element')
 
     const canvas = await html2canvas(target, {
       scale: 3,
@@ -166,7 +141,7 @@ export async function generateOnePageSummaryPDF(
     const fileName = `payroll_one_page_summary_${payrollMonth.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`
     pdf.save(fileName)
   } finally {
-    try { document.body.removeChild(iframe) } catch {}
+    try { document.body.removeChild(container) } catch {}
   }
 }
 

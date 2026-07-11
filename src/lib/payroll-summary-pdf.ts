@@ -67,11 +67,13 @@ export async function generatePayrollSummaryPDF(riders: RiderData[], payrollMont
           <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
           <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
           <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
             * { box-sizing: border-box; }
             html, body { margin: 0; padding: 0; background: #ffffff; color: #000000; width: 800px; }
             body { font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif; }
             table { border-collapse: collapse; }
             img { max-width: 100%; }
+            [dir="rtl"] { font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif !important; }
             .rider-page { width: 800px; height: 1131px; overflow: hidden; page-break-after: always; }
           </style>
         </head>
@@ -80,10 +82,16 @@ export async function generatePayrollSummaryPDF(riders: RiderData[], payrollMont
       `)
       iframeDoc.close()
 
-      // Wait for fonts
-      await new Promise(res => setTimeout(res, 800))
+      // Wait for fonts — critical for Arabic rendering
+      await new Promise(res => setTimeout(res, 2500))
       if (iframe.contentWindow?.document.fonts) {
-        try { await iframe.contentWindow.document.fonts.ready } catch {}
+        try {
+          await iframe.contentWindow.document.fonts.load('400 14px Cairo')
+          await iframe.contentWindow.document.fonts.load('600 14px Cairo')
+          await iframe.contentWindow.document.fonts.load('700 14px Cairo')
+          await iframe.contentWindow.document.fonts.ready
+          await new Promise(res => setTimeout(res, 500))
+        } catch {}
       }
 
       // Render each page separately
