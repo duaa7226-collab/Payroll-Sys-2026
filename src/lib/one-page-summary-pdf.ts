@@ -146,7 +146,7 @@ export async function generateOnePageSummaryPDF(
     if (!target) throw new Error('No summary element in iframe')
 
     const canvas = await html2canvas(target, {
-      scale: 2,
+      scale: 3,
       useCORS: true,
       allowTaint: false,
       backgroundColor: '#ffffff',
@@ -187,7 +187,8 @@ function buildSummaryHTML(data: any): string {
   <!-- Header -->
   <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 60%, #059669 100%); color: #ffffff; padding: 18px 32px; display: flex; justify-content: space-between; align-items: center;">
     <div style="flex: 1;">
-      <div style="font-size: 9px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.75; font-weight: 500;">Payroll Summary Report · <span dir="rtl">تقرير ملخص الرواتب</span></div>
+      <div style="font-size: 10px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.75; font-weight: 500;">Payroll Summary Report</div>
+      <div style="font-size: 11px; opacity: 0.85; margin-top: 1px;" dir="rtl">تقرير ملخص الرواتب</div>
       <div style="font-size: 20px; font-weight: 700; margin-top: 3px; letter-spacing: -0.5px;">${company?.name || 'Nokhaba Tatweer for Trading'}</div>
       <div style="font-size: 12px; opacity: 0.9; margin-top: 1px;" dir="rtl">${company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</div>
     </div>
@@ -222,7 +223,10 @@ function buildSummaryHTML(data: any): string {
 
     <!-- Column 1: Orders & Performance -->
     <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px;">
-      <div style="font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #064e3b; text-transform: uppercase; margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">Orders & Performance</div>
+      <div style="margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
+        <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Orders & Performance</div>
+        <div style="font-size: 11px; color: #6b7280;" dir="rtl">الطلبات والأداء</div>
+      </div>
       <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Completed Orders</span>
         <span style="font-size: 10px; font-weight: 700; color: #111827;">${totalCompletedOrders}</span>
@@ -260,7 +264,10 @@ function buildSummaryHTML(data: any): string {
 
     <!-- Column 2: Earnings Breakdown -->
     <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px;">
-      <div style="font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #064e3b; text-transform: uppercase; margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">Earnings · <span dir="rtl">الأرباح</span></div>
+      <div style="margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
+        <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Earnings</div>
+        <div style="font-size: 11px; color: #6b7280;" dir="rtl">الأرباح</div>
+      </div>
       <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Base Salary</span>
         <span style="font-size: 10px; font-weight: 700; color: #111827;">SAR ${totalBaseSalary.toFixed(2)}</span>
@@ -283,7 +290,10 @@ function buildSummaryHTML(data: any): string {
       </div>
 
       <!-- Deductions breakdown -->
-      <div style="margin-top: 8px; font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #b91c1c; text-transform: uppercase; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid #b91c1c;">Deductions · <span dir="rtl">الخصومات</span></div>
+      <div style="margin-top: 8px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid #b91c1c;">
+        <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #b91c1c; text-transform: uppercase;">Deductions</div>
+        <div style="font-size: 11px; color: #6b7280;" dir="rtl">الخصومات</div>
+      </div>
       ${totalMissingDeduction > 0 ? `
         <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
           <span style="font-size: 9px; color: #374151;">Missing Order Deduct</span>
@@ -308,7 +318,10 @@ function buildSummaryHTML(data: any): string {
 
     <!-- Column 3: Top Earners & Top Deductions -->
     <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px;">
-      <div style="font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #064e3b; text-transform: uppercase; margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">Top Earners</div>
+      <div style="margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
+        <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Top Earners</div>
+        <div style="font-size: 11px; color: #6b7280;" dir="rtl">أعلى الرواتب</div>
+      </div>
       ${topEarners.map((r: any, i: number) => `
         <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
           <div>
@@ -319,7 +332,10 @@ function buildSummaryHTML(data: any): string {
         </div>
       `).join('')}
 
-      <div style="margin-top: 8px; font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #b91c1c; text-transform: uppercase; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid #b91c1c;">Highest Deductions</div>
+      <div style="margin-top: 8px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid #b91c1c;">
+        <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #b91c1c; text-transform: uppercase;">Highest Deductions</div>
+        <div style="font-size: 11px; color: #6b7280;" dir="rtl">أعلى الخصومات</div>
+      </div>
       ${topDeductions.map((r: any, i: number) => {
         const totalDed = r.totalOtherPenalties + r.trafficViolationsDeduction + r.missingOrderDeduction
         return `
@@ -339,7 +355,10 @@ function buildSummaryHTML(data: any): string {
   <div style="padding: 0 32px 8px;">
     <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
       <div style="padding: 5px 10px; background: linear-gradient(90deg, #f9fafb 0%, #ffffff 100%); border-bottom: 2px solid #064e3b;">
-        <div style="font-size: 9px; font-weight: 700; letter-spacing: 1px; color: #064e3b; text-transform: uppercase;">Per-Rider Summary · <span dir="rtl">ملخص لكل سائق</span></div>
+        <div style="display: flex; align-items: baseline; gap: 8px;">
+          <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Per-Rider Summary</div>
+          <div style="font-size: 11px; color: #6b7280;" dir="rtl">ملخص لكل سائق</div>
+        </div>
       </div>
       <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
         <thead>
@@ -394,7 +413,8 @@ function buildSummaryHTML(data: any): string {
     <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #064e3b;"></div>
     <div style="display: flex; justify-content: space-between; align-items: center;">
       <div>
-        <div style="font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #065f46; font-weight: 700;">Total Final Net Salary · <span dir="rtl">إجمالي صافي الرواتب</span></div>
+        <div style="font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #065f46; font-weight: 700;">Total Final Net Salary</div>
+        <div style="font-size: 13px; color: #065f46; font-weight: 600; margin-top: 2px;" dir="rtl">إجمالي صافي الرواتب</div>
         <div style="font-size: 9px; color: #047857; margin-top: 2px;">${totalDrivers} drivers · ${payrollMonth} · Attainment: ${attainmentPct}%</div>
       </div>
       <div style="text-align: right;">
@@ -420,14 +440,14 @@ function buildSummaryHTML(data: any): string {
           ${company?.signatureImg ? `<img src="${company.signatureImg}" alt="Acc Mgr" style="max-height: 26px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" crossorigin="anonymous"/>` : ''}
         </div>
         <div style="font-size: 10px; font-weight: 700; color: #064e3b;">${company?.accManagerName || 'Accounting Manager'}</div>
-        <div style="font-size: 8px; color: #047857;" dir="rtl">مدير الحسابات</div>
+        <div style="font-size: 10px; color: #047857;" dir="rtl">مدير الحسابات</div>
       </div>
       <div style="text-align: center;">
         <div style="height: 30px; border-bottom: 2px solid #064e3b; margin-bottom: 3px; position: relative;">
           ${company?.riderSignatureImg ? `<img src="${company.riderSignatureImg}" alt="Driver" style="max-height: 26px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" crossorigin="anonymous"/>` : ''}
         </div>
         <div style="font-size: 10px; font-weight: 700; color: #064e3b;">Authorized Signature</div>
-        <div style="font-size: 8px; color: #047857;" dir="rtl">التوقيع المعتمد</div>
+        <div style="font-size: 10px; color: #047857;" dir="rtl">التوقيع المعتمد</div>
       </div>
     </div>
     <div style="font-size: 7px; color: #6b7280; margin-top: 6px; text-align: center;">
