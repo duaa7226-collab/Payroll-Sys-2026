@@ -8,11 +8,15 @@ export interface ParsedWorkbook {
   wrRow: Record<string, any> | null
   sheetNames: string[]
   warnings: string[]
+  // Company/contract-level banking info (used when RLVL doesn't have per-driver banking)
   banking: {
     beneficiaryName: string
     iban: string
     bankName: string
+    source: 'rlvl' | 'wr' | 'none'
   }
+  // Per-driver banking info (when RLVL has banking columns)
+  driverBanking: Record<string, { beneficiaryName: string; iban: string; bankName: string }>
 }
 
 // Column name normalization — strip arabic side, lowercase, snake_case
@@ -98,6 +102,10 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
   const missedDaysCol = findCol(rlvlHeaders, 'missed_days_penalty')
   const segmentCol = findCol(rlvlHeaders, 'segment_payment')
   const riderBalanceCol = findCol(rlvlHeaders, 'rider_balance')
+  // RLVL may also contain per-driver banking columns (preferred source per user requirement)
+  const rlvlBeneficiaryCol = findCol(rlvlHeaders, 'beneficiary_name', 'beneficiary')
+  const rlvlIbanCol = findCol(rlvlHeaders, 'iban')
+  const rlvlBankCol = findCol(rlvlHeaders, 'bank_name', 'bank')
 
   if (!riderIdCol) throw new Error('Cannot find rider_id column in RLVL sheet')
 
@@ -154,6 +162,10 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
   // ====== Join RLVL + FTR by rider ID ======
   const drivers: RawDriverData[] = []
   const seenRiders = new Set<string>()
+  // Per-driver banking info extracted from RLVL (preferred source)
+  const driverBanking: Record<string, { beneficiaryName: string; iban: string; bankName: string }> = {}
+  // Aggregate RLVL banking (first non-empty row — used as fallback when WR has nothing)
+  let rlvlAggregateBanking = { beneficiaryName: '', iban: '', bankName: '' }
 
   for (const row of rlvlRows) {
     const riderId = String(row[riderIdCol!] ?? '').trim()
@@ -169,6 +181,22 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
 
     const name = nameCol ? String(row[nameCol] ?? '') : ''
     const contractName = contractCol ? String(row[contractCol] ?? 'nokhaba_tatweer_ftr') : 'nokhaba_tatweer_ftr'
+
+    // Extract per-driver banking from RLVL (if columns exist)
+    const rlvlBeneficiary = rlvlBeneficiaryCol ? String(row[rlvlBeneficiaryCol] ?? '').trim() : ''
+    const rlvlIban = rlvlIbanCol ? String(row[rlvlIbanCol] ?? '').trim() : ''
+    const rlvlBank = rlvlBankCol ? String(row[rlvlBankCol] ?? '').trim() : ''
+    if (rlvlBeneficiary || rlvlIban || rlvlBank) {
+      driverBanking[riderId] = {
+        beneficiaryName: rlvlBeneficiary,
+        iban: rlvlIban,
+        bankName: rlvlBank,
+      }
+      // Capture first non-empty as aggregate (used when WR doesn't have banking)
+      if (!rlvlAggregateBanking.beneficiaryName && rlvlBeneficiary) rlvlAggregateBanking.beneficiaryName = rlvlBeneficiary
+      if (!rlvlAggregateBanking.iban && rlvlIban) rlvlAggregateBanking.iban = rlvlIban
+      if (!rlvlAggregateBanking.bankName && rlvlBank) rlvlAggregateBanking.bankName = rlvlBank
+    }
 
     const ftrRow = ftrByRider.get(riderId)
     let vehicleType = 'car'
@@ -227,15 +255,24 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
     })
   }
 
+  // ====== Decide aggregate banking source ======
+  // Priority: RLVL (per-driver / first-row aggregate) > WR (company-level) > none
+  const rlvlHasBanking = !!(rlvlAggregateBanking.beneficiaryName || rlvlAggregateBanking.iban || rlvlAggregateBanking.bankName)
+  const wrHasBanking = !!(wrBeneficiaryName || wrIban || wrBankName)
+  const bankingSource: 'rlvl' | 'wr' | 'none' = rlvlHasBanking ? 'rlvl' : (wrHasBanking ? 'wr' : 'none')
+  const finalBanking = {
+    beneficiaryName: rlvlHasBanking ? rlvlAggregateBanking.beneficiaryName : wrBeneficiaryName,
+    iban: rlvlHasBanking ? rlvlAggregateBanking.iban : wrIban,
+    bankName: rlvlHasBanking ? rlvlAggregateBanking.bankName : wrBankName,
+    source: bankingSource,
+  }
+
   return {
     drivers,
     wrRow,
     sheetNames,
     warnings,
-    banking: {
-      beneficiaryName: wrBeneficiaryName,
-      iban: wrIban,
-      bankName: wrBankName,
-    },
+    banking: finalBanking,
+    driverBanking,
   }
 }

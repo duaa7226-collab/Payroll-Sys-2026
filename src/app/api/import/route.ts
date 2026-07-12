@@ -58,6 +58,12 @@ export async function POST(req: NextRequest) {
     // Upsert drivers and calculate results
     let totalGross = 0, totalPenalties = 0, totalNet = 0, totalVariance = 0, totalTraffic = 0
     for (const raw of parsed.drivers) {
+      // Pick per-driver banking from RLVL if available; otherwise use aggregate (RLVL or WR fallback)
+      const perDriverBanking = parsed.driverBanking?.[raw.riderId]
+      const beneficiaryName = perDriverBanking?.beneficiaryName || parsed.banking?.beneficiaryName || null
+      const iban = perDriverBanking?.iban || parsed.banking?.iban || null
+      const bankName = perDriverBanking?.bankName || parsed.banking?.bankName || null
+
       const driver = await db.driver.upsert({
         where: { riderId: raw.riderId },
         create: {
@@ -65,17 +71,17 @@ export async function POST(req: NextRequest) {
           name: raw.name,
           contractName: raw.contractName,
           vehicleType: raw.vehicleType,
-          beneficiaryName: parsed.banking?.beneficiaryName || null,
-          iban: parsed.banking?.iban || null,
-          bankName: parsed.banking?.bankName || null,
+          beneficiaryName,
+          iban,
+          bankName,
         },
         update: {
           name: raw.name,
           contractName: raw.contractName,
           vehicleType: raw.vehicleType,
-          beneficiaryName: parsed.banking?.beneficiaryName || null,
-          iban: parsed.banking?.iban || null,
-          bankName: parsed.banking?.bankName || null,
+          beneficiaryName,
+          iban,
+          bankName,
         },
       })
 
