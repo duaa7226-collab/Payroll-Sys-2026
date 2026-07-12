@@ -3,8 +3,8 @@ import { db } from '@/lib/db'
 import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
 import { getAllRiderTrafficDeductions } from '@/lib/traffic-helpers'
 import { getAllRiderManualAdjustments } from '@/lib/manual-adjustment-helpers'
-import { getActiveCustomBonuses } from '@/lib/custom-bonus-helpers'
-import { getActiveCustomDeductions } from '@/lib/custom-deduction-helpers'
+import { getActiveCustomBonuses, getBonusesForRider } from '@/lib/custom-bonus-helpers'
+import { getActiveCustomDeductions, getDeductionsForRider, processCustomDeductionInstallments } from '@/lib/custom-deduction-helpers'
 import { calculateDriverSalary } from '@/lib/salary-engine'
 
 // POST /api/recalculate?runId=...
@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
         trafficViolationsTotal: trafficByRider.get(existing.riderId)?.total ?? 0,
         manualBonuses: (manualByRider.get(existing.riderId)?.bonuses ?? []).map(b => ({ title: b.title, amount: b.amount })),
         manualDeductions: (manualByRider.get(existing.riderId)?.deductions ?? []).map(d => ({ title: d.title, amount: d.amount })),
-        customBonuses: customBonuses.map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount })),
-        customDeductions: customDeductions.map(d => ({ name: d.name, nameAr: d.nameAr, amount: d.amount })),
+        customBonuses: getBonusesForRider(customBonuses, existing.riderId).map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount })),
+        customDeductions: getDeductionsForRider(customDeductions, existing.riderId).map(d => ({ name: d.name, nameAr: d.nameAr, amount: d.amount, monthlyDeduction: d.monthlyDeduction })),
       }
 
       const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, payrollRun.payrollMonth)
@@ -121,6 +121,9 @@ export async function POST(req: NextRequest) {
       where: { id: runId },
       data: { totalGross, totalPenalties, totalNet, totalVariance, totalTraffic, ruleSnapshot: JSON.stringify(activeRules.snapshot) },
     })
+
+    // Process custom deduction installments after recalculation
+    await processCustomDeductionInstallments()
 
     return NextResponse.json({
       success: true,

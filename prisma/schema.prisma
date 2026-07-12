@@ -247,32 +247,41 @@ model ManualAdjustment {
 }
 
 // ============================================================
-// CUSTOM BONUSES (defined from Rules Control Center, apply to all riders)
+// CUSTOM BONUSES (defined from Rules Control Center, apply to all or selected riders)
 // ============================================================
 model CustomBonus {
-  id          String   @id @default(cuid())
-  name        String   // e.g. "Mecca Hajj Bonus", "3PL Bonus"
-  nameAr      String?  // Arabic label
-  amount      Float    // fixed amount per rider
-  type        String   @default("fixed") // fixed | per_order
-  description String?
-  status      String   @default("active") // active | inactive
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  name            String
+  nameAr          String?
+  amount          Float
+  type            String   @default("fixed")
+  description     String?
+  status          String   @default("active")
+  applyToAll      Boolean  @default(true)
+  targetRiderIds  String?  // JSON array of rider IDs when applyToAll=false
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // ============================================================
-// CUSTOM DEDUCTIONS (defined from Rules Control Center, apply to all riders)
+// CUSTOM DEDUCTIONS (with installment support + driver targeting)
 // ============================================================
 model CustomDeduction {
-  id          String   @id @default(cuid())
-  name        String
-  nameAr      String?
-  amount      Float
-  description String?
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  name                    String
+  nameAr                  String?
+  amount                  Float    // total amount
+  description             String?
+  status                  String   @default("active")
+  applyToAll              Boolean  @default(true)
+  targetRiderIds          String?  // JSON array of rider IDs
+  // Installment fields
+  installmentEnabled      Boolean  @default(false)
+  installmentMonthlyAmount Float   @default(0)
+  installmentTotalPaid    Float    @default(0)
+  installmentStatus       String   @default("none") // none | active | completed
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 // ============================================================

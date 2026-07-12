@@ -235,6 +235,9 @@ function CustomBonusesSection() {
   const [newNameAr, setNewNameAr] = useState('')
   const [newAmount, setNewAmount] = useState('')
   const [saving, setSaving] = useState(false)
+  const [applyToAll, setApplyToAll] = useState(true)
+  const [selectedDrivers, setSelectedDrivers] = useState<string[]>([])
+  const [drivers, setDrivers] = useState<any[]>([])
 
   const reload = () => {
     setLoading(true)
@@ -243,7 +246,14 @@ function CustomBonusesSection() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { reload() }, [])
+  useEffect(() => {
+    reload()
+    safeFetchJson('/api/dashboard', null).then(d => {
+      if (d?.run?.id) {
+        safeFetchJson(`/api/drivers?runId=${d.run.id}`, { results: [] }).then(dr => setDrivers(dr?.results ?? []))
+      }
+    })
+  }, [])
 
   const triggerRecalc = () => {
     safeFetchJson('/api/dashboard', null).then(d => {
@@ -257,15 +267,16 @@ function CustomBonusesSection() {
 
   const handleAdd = async () => {
     if (!newName || !newAmount) { toast.error('Name and amount required'); return }
+    if (!applyToAll && selectedDrivers.length === 0) { toast.error('Select at least one driver'); return }
     setSaving(true)
     try {
       const resp = await fetch('/api/custom-bonuses', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, nameAr: newNameAr, amount: parseFloat(newAmount), type: 'fixed' }),
+        body: JSON.stringify({ name: newName, nameAr: newNameAr, amount: parseFloat(newAmount), type: 'fixed', applyToAll, targetRiderIds: applyToAll ? [] : selectedDrivers }),
       })
       if (resp.ok) {
         toast.success(`Bonus "${newName}" added — recalculating...`)
-        setNewName(''); setNewNameAr(''); setNewAmount(''); setAdding(false)
+        setNewName(''); setNewNameAr(''); setNewAmount(''); setAdding(false); setApplyToAll(true); setSelectedDrivers([])
         reload()
         triggerRecalc()
       } else { toast.error('Add failed') }
@@ -339,8 +350,37 @@ function CustomBonusesSection() {
               </Button>
               <Button size="sm" variant="outline" onClick={() => setAdding(false)}>Cancel</Button>
             </div>
+            {/* Apply to: All or Selected Drivers */}
+            <div className="flex items-center gap-3 pt-1">
+              <Label className="text-[10px] flex items-center gap-1.5">
+                <input type="radio" checked={applyToAll} onChange={() => setApplyToAll(true)} className="h-3 w-3" />
+                All Riders
+              </Label>
+              <Label className="text-[10px] flex items-center gap-1.5">
+                <input type="radio" checked={!applyToAll} onChange={() => setApplyToAll(false)} className="h-3 w-3" />
+                Selected Drivers
+              </Label>
+            </div>
+            {!applyToAll && (
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 border rounded bg-white dark:bg-muted/30">
+                {drivers.map((d: any) => (
+                  <label key={d.riderId} className="flex items-center gap-1 text-[10px] cursor-pointer rounded px-1.5 py-0.5 border hover:bg-accent">
+                    <input
+                      type="checkbox"
+                      checked={selectedDrivers.includes(d.riderId)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedDrivers([...selectedDrivers, d.riderId])
+                        else setSelectedDrivers(selectedDrivers.filter(r => r !== d.riderId))
+                      }}
+                      className="h-2.5 w-2.5"
+                    />
+                    {d.driverName}
+                  </label>
+                ))}
+              </div>
+            )}
             <p className="text-[10px] text-amber-700 dark:text-amber-300">
-              ℹ️ This bonus will be added to every rider's gross salary immediately. All payslips and results update automatically.
+              ℹ️ {applyToAll ? 'This bonus will be added to ALL riders.' : `This bonus will be added to ${selectedDrivers.length} selected rider(s).`} All payslips and results update automatically.
             </p>
           </div>
         )}
@@ -400,6 +440,11 @@ function CustomDeductionsSection() {
   const [newNameAr, setNewNameAr] = useState('')
   const [newAmount, setNewAmount] = useState('')
   const [saving, setSaving] = useState(false)
+  const [applyToAll, setApplyToAll] = useState(true)
+  const [selectedDrivers, setSelectedDrivers] = useState<string[]>([])
+  const [drivers, setDrivers] = useState<any[]>([])
+  const [installmentEnabled, setInstallmentEnabled] = useState(false)
+  const [installmentMonthly, setInstallmentMonthly] = useState('')
 
   const reload = () => {
     setLoading(true)
@@ -408,7 +453,14 @@ function CustomDeductionsSection() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { reload() }, [])
+  useEffect(() => {
+    reload()
+    safeFetchJson('/api/dashboard', null).then(d => {
+      if (d?.run?.id) {
+        safeFetchJson(`/api/drivers?runId=${d.run.id}`, { results: [] }).then(dr => setDrivers(dr?.results ?? []))
+      }
+    })
+  }, [])
 
   const triggerRecalc = () => {
     safeFetchJson('/api/dashboard', null).then(d => {
@@ -422,18 +474,26 @@ function CustomDeductionsSection() {
 
   const handleAdd = async () => {
     if (!newName || !newAmount) { toast.error('Name and amount required'); return }
+    if (!applyToAll && selectedDrivers.length === 0) { toast.error('Select at least one driver'); return }
+    if (installmentEnabled && (!installmentMonthly || parseFloat(installmentMonthly) <= 0)) { toast.error('Monthly installment amount required'); return }
+    if (installmentEnabled && parseFloat(installmentMonthly) >= parseFloat(newAmount)) { toast.error('Monthly must be less than total'); return }
     setSaving(true)
     try {
       const resp = await fetch('/api/custom-deductions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, nameAr: newNameAr, amount: parseFloat(newAmount) }),
+        body: JSON.stringify({
+          name: newName, nameAr: newNameAr, amount: parseFloat(newAmount),
+          applyToAll, targetRiderIds: applyToAll ? [] : selectedDrivers,
+          installmentEnabled, installmentMonthlyAmount: installmentEnabled ? parseFloat(installmentMonthly) : 0,
+        }),
       })
       if (resp.ok) {
         toast.success(`Deduction "${newName}" added — recalculating...`)
         setNewName(''); setNewNameAr(''); setNewAmount(''); setAdding(false)
+        setApplyToAll(true); setSelectedDrivers([]); setInstallmentEnabled(false); setInstallmentMonthly('')
         reload()
         triggerRecalc()
-      } else { toast.error('Add failed') }
+      } else { const e = await resp.json().catch(() => ({})); toast.error(e.error || 'Add failed') }
     } finally { setSaving(false) }
   }
 
@@ -503,8 +563,55 @@ function CustomDeductionsSection() {
               </Button>
               <Button size="sm" variant="outline" onClick={() => setAdding(false)}>Cancel</Button>
             </div>
+            {/* Installment option */}
+            <div className="flex items-center gap-2 pt-1">
+              <Switch checked={installmentEnabled} onCheckedChange={setInstallmentEnabled} />
+              <Label className="text-[10px]">Installment Plan (deduct monthly until paid)</Label>
+            </div>
+            {installmentEnabled && (
+              <div>
+                <Label className="text-[10px]">Monthly Deduction Amount (SAR)</Label>
+                <Input type="number" value={installmentMonthly} onChange={(e) => setInstallmentMonthly(e.target.value)} placeholder="e.g. 300" className="h-8" step="0.01" />
+                {newAmount && installmentMonthly && parseFloat(newAmount) > 0 && parseFloat(installmentMonthly) > 0 && (
+                  <div className="mt-1 rounded bg-rose-50 dark:bg-rose-950/30 p-2 text-[10px] text-rose-700 dark:text-rose-300">
+                    Total: SAR {parseFloat(newAmount).toFixed(2)} · Monthly: SAR {parseFloat(installmentMonthly).toFixed(2)} ·
+                    Remaining months: {Math.ceil(parseFloat(newAmount) / parseFloat(installmentMonthly))}
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Apply to: All or Selected Drivers */}
+            <div className="flex items-center gap-3 pt-1">
+              <Label className="text-[10px] flex items-center gap-1.5">
+                <input type="radio" checked={applyToAll} onChange={() => setApplyToAll(true)} className="h-3 w-3" />
+                All Riders
+              </Label>
+              <Label className="text-[10px] flex items-center gap-1.5">
+                <input type="radio" checked={!applyToAll} onChange={() => setApplyToAll(false)} className="h-3 w-3" />
+                Selected Drivers
+              </Label>
+            </div>
+            {!applyToAll && (
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 border rounded bg-white dark:bg-muted/30">
+                {drivers.map((d: any) => (
+                  <label key={d.riderId} className="flex items-center gap-1 text-[10px] cursor-pointer rounded px-1.5 py-0.5 border hover:bg-accent">
+                    <input
+                      type="checkbox"
+                      checked={selectedDrivers.includes(d.riderId)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedDrivers([...selectedDrivers, d.riderId])
+                        else setSelectedDrivers(selectedDrivers.filter(r => r !== d.riderId))
+                      }}
+                      className="h-2.5 w-2.5"
+                    />
+                    {d.driverName}
+                  </label>
+                ))}
+              </div>
+            )}
             <p className="text-[10px] text-rose-700 dark:text-rose-300">
-              ℹ️ This deduction will be subtracted from every rider's net salary immediately. All payslips and results update automatically.
+              ℹ️ {installmentEnabled ? `Installment: SAR ${installmentMonthly || 0}/month until SAR ${newAmount || 0} is paid. ` : ''}
+              {applyToAll ? 'Applies to ALL riders.' : `Applies to ${selectedDrivers.length} selected rider(s).`} All payslips update automatically.
             </p>
           </div>
         )}
@@ -526,10 +633,25 @@ function CustomDeductionsSection() {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm">{d.name}</div>
                   {d.nameAr && <div className="text-xs text-muted-foreground" dir="rtl" style={{ fontFamily: 'var(--font-arabic)' }}>{d.nameAr}</div>}
+                  {d.installmentEnabled && d.installmentStatus === 'active' && (
+                    <div className="text-[10px] text-blue-600 mt-0.5">
+                      Installment: SAR {d.installmentMonthlyAmount.toFixed(0)}/mo · Paid: {d.installmentTotalPaid.toFixed(0)} · Rem: {d.remainingBalance?.toFixed(0)} ({d.installmentRemainingMonths}mo)
+                    </div>
+                  )}
+                  {d.installmentEnabled && d.installmentStatus === 'completed' && (
+                    <div className="text-[10px] text-emerald-600 mt-0.5">✓ Fully paid</div>
+                  )}
+                  {!d.applyToAll && d.targetRiderIds && (
+                    <div className="text-[9px] text-muted-foreground mt-0.5">{d.targetRiderIds.length} selected rider(s)</div>
+                  )}
                 </div>
                 <div className="text-right">
-                  <div className="font-bold tabular-nums text-rose-600">-SAR {d.amount.toFixed(2)}</div>
-                  <div className="text-[10px] text-muted-foreground">per rider</div>
+                  <div className="font-bold tabular-nums text-rose-600">
+                    {d.installmentEnabled ? `-${d.installmentMonthlyAmount.toFixed(0)}/mo` : `-SAR ${d.amount.toFixed(2)}`}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {d.installmentEnabled ? `of SAR ${d.amount.toFixed(0)}` : 'per rider'}
+                  </div>
                 </div>
                 <Badge variant="outline" className={cn('text-[9px]', d.status === 'active' ? 'bg-rose-500/10 text-rose-700' : 'bg-muted text-muted-foreground')}>
                   {d.status}

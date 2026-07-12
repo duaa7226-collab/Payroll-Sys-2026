@@ -206,9 +206,10 @@ export function calculateDriverSalary(
   const customBonuses = raw.customBonuses || []
   const customBonusTotal = customBonuses.reduce((a, b) => a + b.amount, 0)
 
-  // ====== Custom deductions (from Rules Control Center) ======
+  // ====== Custom deductions (from Rules Control Center — installment-aware) ======
   const customDeductions = raw.customDeductions || []
-  const customDeductionTotal = customDeductions.reduce((a, b) => a + b.amount, 0)
+  // For installment deductions, use monthlyDeduction; for one-time, use full amount
+  const customDeductionTotal = customDeductions.reduce((a, b) => a + (b.monthlyDeduction || b.amount), 0)
 
   // ====== Gross salary calculation per mode ======
   let grossBeforePenalties = 0

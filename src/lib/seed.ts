@@ -3,8 +3,8 @@ import { db } from './db'
 import { createDefaultActiveRuleSet, getActiveRuleSnapshot } from './rule-helpers'
 import { parseWorkbook } from './excel-parser'
 import { calculateDriverSalary } from './salary-engine'
-import { getActiveCustomBonuses } from './custom-bonus-helpers'
-import { getActiveCustomDeductions } from './custom-deduction-helpers'
+import { getActiveCustomBonuses, getBonusesForRider } from './custom-bonus-helpers'
+import { getActiveCustomDeductions, getDeductionsForRider, processCustomDeductionInstallments } from './custom-deduction-helpers'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
@@ -98,9 +98,11 @@ async function main() {
     const driver = await db.driver.findUnique({ where: { riderId: raw.riderId } })
     if (!driver) continue
 
-    // Enrich with custom bonuses and deductions
-    raw.customBonuses = customBonuses.map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount }))
-    raw.customDeductions = customDeductions.map(d => ({ name: d.name, nameAr: d.nameAr, amount: d.amount }))
+    // Enrich with custom bonuses and deductions (filtered per rider)
+    const riderBonuses = getBonusesForRider(customBonuses, raw.riderId)
+    raw.customBonuses = riderBonuses.map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount }))
+    const riderDeductions = getDeductionsForRider(customDeductions, raw.riderId)
+    raw.customDeductions = riderDeductions.map(d => ({ name: d.name, nameAr: d.nameAr, amount: d.amount, monthlyDeduction: d.monthlyDeduction }))
 
     const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, payrollMonth)
 
@@ -227,6 +229,10 @@ async function main() {
     }
     console.log(`Created ${samples.length} sample traffic violations`)
   }
+
+  // 7b. Process custom deduction installments
+  await processCustomDeductionInstallments()
+  console.log('Processed custom deduction installments')
 
   // 8. Audit log for import
   await db.auditLog.create({
