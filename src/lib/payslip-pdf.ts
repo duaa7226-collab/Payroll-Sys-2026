@@ -392,8 +392,13 @@ function buildPayslipHTML(data: any): string {
   <div style="margin: 0 28px 8px; padding: 10px 18px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 8px; border: 2px solid #064e3b;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
       <div>
-        <div style="font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #065f46; font-weight: 600;">Final Net Salary · <span dir="rtl">صافي الراتب النهائي</span></div>
-        <div style="font-size: 9px; color: #047857; margin-top: 2px;">Payable to: ${driver?.beneficiaryName || result.driverName}${driver?.bankName ? ' · ' + driver.bankName : ''}</div>
+        <div style="font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #065f46; font-weight: 600;">Final Net Salary</div>
+        <div style="font-size: 13px; color: #065f46; font-weight: 700; margin-top: 2px;" dir="rtl">صافي الراتب النهائي</div>
+        <div style="margin-top: 6px; font-size: 10px; color: #047857; line-height: 1.5;">
+          <div><strong>Beneficiary:</strong> ${driver?.beneficiaryName || result.driverName}</div>
+          ${driver?.bankName ? `<div><strong>Bank:</strong> ${driver.bankName}</div>` : ''}
+          ${driver?.iban ? `<div><strong>IBAN:</strong> <span style="font-family: monospace;">${driver.iban}</span></div>` : ''}
+        </div>
       </div>
       <div style="text-align: right;">
         <div style="font-size: 24px; font-weight: 800; color: #064e3b; font-variant-numeric: tabular-nums; letter-spacing: -0.5px;">SAR ${result.finalNetSalary.toFixed(2)}</div>

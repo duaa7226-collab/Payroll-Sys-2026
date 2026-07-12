@@ -317,9 +317,10 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
               <div style={{ fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase', color: '#065f46', fontWeight: 600 }}>
                 Final Net Salary · صافي الراتب النهائي
               </div>
-              <div style={{ fontSize: '10px', color: '#047857', marginTop: '4px' }}>
-                Payable to: {driver?.beneficiaryName || result.driverName}
-                {driver?.bankName && ` · ${driver.bankName}`}
+              <div style={{ fontSize: '10px', color: '#047857', marginTop: '6px', lineHeight: '1.5' }}>
+                <div><strong>Beneficiary:</strong> {driver?.beneficiaryName || result.driverName}</div>
+                {driver?.bankName && <div><strong>Bank:</strong> {driver.bankName}</div>}
+                {driver?.iban && <div><strong>IBAN:</strong> <span style={{ fontFamily: 'monospace' }}>{driver.iban}</span></div>}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>

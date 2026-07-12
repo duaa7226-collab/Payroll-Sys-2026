@@ -51,7 +51,7 @@ async function main() {
   console.log(`Parsed workbook: ${parsed.drivers.length} drivers, ${parsed.warnings.length} warnings`)
   for (const w of parsed.warnings) console.log(`  WARN: ${w}`)
 
-  // 4. Create or update drivers
+  // 4. Create or update drivers (with banking info from WR sheet)
   for (const d of parsed.drivers) {
     await db.driver.upsert({
       where: { riderId: d.riderId },
@@ -60,11 +60,17 @@ async function main() {
         name: d.name,
         contractName: d.contractName,
         vehicleType: d.vehicleType,
+        beneficiaryName: parsed.banking.beneficiaryName || null,
+        iban: parsed.banking.iban || null,
+        bankName: parsed.banking.bankName || null,
       },
       update: {
         name: d.name,
         contractName: d.contractName,
         vehicleType: d.vehicleType,
+        beneficiaryName: parsed.banking.beneficiaryName || null,
+        iban: parsed.banking.iban || null,
+        bankName: parsed.banking.bankName || null,
       },
     })
   }

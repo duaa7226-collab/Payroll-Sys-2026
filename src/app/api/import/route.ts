@@ -65,11 +65,17 @@ export async function POST(req: NextRequest) {
           name: raw.name,
           contractName: raw.contractName,
           vehicleType: raw.vehicleType,
+          beneficiaryName: parsed.banking?.beneficiaryName || null,
+          iban: parsed.banking?.iban || null,
+          bankName: parsed.banking?.bankName || null,
         },
         update: {
           name: raw.name,
           contractName: raw.contractName,
           vehicleType: raw.vehicleType,
+          beneficiaryName: parsed.banking?.beneficiaryName || null,
+          iban: parsed.banking?.iban || null,
+          bankName: parsed.banking?.bankName || null,
         },
       })
 

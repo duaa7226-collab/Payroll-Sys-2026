@@ -8,6 +8,11 @@ export interface ParsedWorkbook {
   wrRow: Record<string, any> | null
   sheetNames: string[]
   warnings: string[]
+  banking: {
+    beneficiaryName: string
+    iban: string
+    bankName: string
+  }
 }
 
 // Column name normalization — strip arabic side, lowercase, snake_case
@@ -126,15 +131,24 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
     }
   }
 
-  // Extract WR aggregate deductions (used as defaults per driver if individual not present)
+  // Extract WR aggregate deductions + banking info
   let wrCarDeduction = 0
   let wrTgaDeduction = 0
+  let wrBeneficiaryName = ''
+  let wrIban = ''
+  let wrBankName = ''
   if (wrRow) {
     const wrHeaders = Object.keys(wrRow)
     const carCol = findCol(wrHeaders, 'car_deduction', 'car deduction')
     const tgaCol = findCol(wrHeaders, 'tga', 'tga 2026')
+    const beneficiaryCol = findCol(wrHeaders, 'beneficiary_name', 'beneficiary')
+    const ibanCol = findCol(wrHeaders, 'iban')
+    const bankCol = findCol(wrHeaders, 'bank_name', 'bank')
     if (carCol) wrCarDeduction = num(wrRow[carCol])
     if (tgaCol) wrTgaDeduction = num(wrRow[tgaCol])
+    if (beneficiaryCol) wrBeneficiaryName = String(wrRow[beneficiaryCol] ?? '').trim()
+    if (ibanCol) wrIban = String(wrRow[ibanCol] ?? '').trim()
+    if (bankCol) wrBankName = String(wrRow[bankCol] ?? '').trim()
   }
 
   // ====== Join RLVL + FTR by rider ID ======
@@ -218,5 +232,10 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
     wrRow,
     sheetNames,
     warnings,
+    banking: {
+      beneficiaryName: wrBeneficiaryName,
+      iban: wrIban,
+      bankName: wrBankName,
+    },
   }
 }
