@@ -3,6 +3,7 @@ import { db } from './db'
 import { createDefaultActiveRuleSet, getActiveRuleSnapshot } from './rule-helpers'
 import { parseWorkbook } from './excel-parser'
 import { calculateDriverSalary } from './salary-engine'
+import { getActiveCustomBonuses } from './custom-bonus-helpers'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
@@ -88,11 +89,15 @@ async function main() {
     },
   })
 
-  // 6. Calculate results
+  // 6. Calculate results (with custom bonuses from Rules Control Center)
+  const customBonuses = await getActiveCustomBonuses()
   let totalGross = 0, totalPenalties = 0, totalNet = 0, totalVariance = 0, totalTraffic = 0
   for (const raw of parsed.drivers) {
     const driver = await db.driver.findUnique({ where: { riderId: raw.riderId } })
     if (!driver) continue
+
+    // Enrich with custom bonuses
+    raw.customBonuses = customBonuses.map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount }))
 
     const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, payrollMonth)
 

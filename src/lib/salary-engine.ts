@@ -27,6 +27,8 @@ export interface RawDriverData {
   segmentPayment: number
   // Traffic violations
   trafficViolationsTotal: number
+  // Custom bonuses (from Rules Control Center)
+  customBonuses: Array<{ name: string; nameAr: string | null; amount: number }>
 }
 
 export interface DriverResultCalc {
@@ -67,6 +69,9 @@ export interface DriverResultCalc {
   missingOrderDeduction: number
   // Segment payment (bonus)
   segmentPayment: number
+  // Custom bonuses (from Rules Control Center)
+  customBonuses: Array<{ name: string; nameAr: string | null; amount: number }>
+  customBonusTotal: number
   // Penalties
   penalties: Record<string, number>
   totalOtherPenalties: number
@@ -192,30 +197,32 @@ export function calculateDriverSalary(
   // It's added to gross salary before penalties
   const segmentPayment = raw.segmentPayment || 0
 
+  // ====== Custom bonuses (from Rules Control Center) ======
+  const customBonuses = raw.customBonuses || []
+  const customBonusTotal = customBonuses.reduce((a, b) => a + b.amount, 0)
+
   // ====== Gross salary calculation per mode ======
   let grossBeforePenalties = 0
   if (salaryMode === 'days_prorated_mode') {
     if (raw.completedOrders >= selectedTargetThreshold) {
-      grossBeforePenalties = adjustedBaseSalary + bonusAmount + segmentPayment
+      grossBeforePenalties = adjustedBaseSalary + bonusAmount + segmentPayment + customBonusTotal
     } else {
-      grossBeforePenalties = adjustedBaseSalary - missingOrderDeduction + segmentPayment
+      grossBeforePenalties = adjustedBaseSalary - missingOrderDeduction + segmentPayment + customBonusTotal
     }
   } else if (salaryMode === 'orders_based_mode') {
     if (ordersPolicy === 'strict_target_salary_policy') {
       if (raw.completedOrders === selectedTargetThreshold) {
-        grossBeforePenalties = monthlyBaseSalary + segmentPayment
+        grossBeforePenalties = monthlyBaseSalary + segmentPayment + customBonusTotal
       } else if (raw.completedOrders < selectedTargetThreshold) {
-        grossBeforePenalties = baseSalaryEquivalent - missingOrderDeduction + segmentPayment
+        grossBeforePenalties = baseSalaryEquivalent - missingOrderDeduction + segmentPayment + customBonusTotal
       } else {
-        grossBeforePenalties = monthlyBaseSalary + bonusAmount + segmentPayment
+        grossBeforePenalties = monthlyBaseSalary + bonusAmount + segmentPayment + customBonusTotal
       }
     } else {
-      // linear_order_rate_policy
-      grossBeforePenalties = baseSalaryEquivalent + bonusAmount - missingOrderDeduction + segmentPayment
+      grossBeforePenalties = baseSalaryEquivalent + bonusAmount - missingOrderDeduction + segmentPayment + customBonusTotal
     }
   } else {
-    // hybrid placeholder — fall back to orders-based linear
-    grossBeforePenalties = baseSalaryEquivalent + bonusAmount - missingOrderDeduction + segmentPayment
+    grossBeforePenalties = baseSalaryEquivalent + bonusAmount - missingOrderDeduction + segmentPayment + customBonusTotal
   }
 
   // ====== Penalties — only enabled ones, normalize sign correctly ======
@@ -325,6 +332,8 @@ export function calculateDriverSalary(
     bonusAmount,
     missingOrderDeduction,
     segmentPayment,
+    customBonuses,
+    customBonusTotal,
     penalties,
     totalOtherPenalties,
     trafficViolationsDeduction,

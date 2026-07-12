@@ -227,6 +227,21 @@ model TrafficViolation {
 }
 
 // ============================================================
+// CUSTOM BONUSES (defined from Rules Control Center, apply to all riders)
+// ============================================================
+model CustomBonus {
+  id          String   @id @default(cuid())
+  name        String   // e.g. "Mecca Hajj Bonus", "3PL Bonus"
+  nameAr      String?  // Arabic label
+  amount      Float    // fixed amount per rider
+  type        String   @default("fixed") // fixed | per_order
+  description String?
+  status      String   @default("active") // active | inactive
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================================
 // AUDIT LOG
 // ============================================================
 model AuditLog {

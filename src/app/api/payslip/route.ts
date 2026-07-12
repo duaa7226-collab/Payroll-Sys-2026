@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getActiveCustomBonuses } from '@/lib/custom-bonus-helpers'
 
 // GET /api/payslip?resultId=...
 export async function GET(req: NextRequest) {
@@ -19,6 +20,11 @@ export async function GET(req: NextRequest) {
     where: { riderId: result.riderId, status: 'approved' },
     orderBy: { ticketDate: 'desc' },
   })
+  const manualAdjustments = await db.manualAdjustment.findMany({
+    where: { riderId: result.riderId, status: 'active' },
+    orderBy: { createdAt: 'desc' },
+  })
+  const customBonuses = await getActiveCustomBonuses()
 
   const penalties = JSON.parse(result.penaltiesJson || '{}')
 
@@ -28,5 +34,7 @@ export async function GET(req: NextRequest) {
     company,
     traffic,
     penalties,
+    manualAdjustments,
+    customBonuses,
   })
 }

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import {
   Settings2, Save, RefreshCw, Check, AlertTriangle, RotateCcw,
-  ChevronDown, ChevronRight, FileText, History, Info, Beaker, Layers
+  ChevronDown, ChevronRight, FileText, History, Info, Beaker, Layers,
+  Plus, Trash2, Gift, Loader2
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -203,6 +204,9 @@ export function RulesControlCenter() {
         })}
       </Accordion>
 
+      {/* Custom Bonuses Section */}
+      <CustomBonusesSection />
+
       {/* Audit log teaser */}
       <Card className="card-glow">
         <CardHeader>
@@ -215,6 +219,171 @@ export function RulesControlCenter() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ============================================================
+// Custom Bonuses Management Section
+// ============================================================
+function CustomBonusesSection() {
+  const [bonuses, setBonuses] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newNameAr, setNewNameAr] = useState('')
+  const [newAmount, setNewAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const reload = () => {
+    setLoading(true)
+    safeFetchJson('/api/custom-bonuses', { bonuses: [] })
+      .then(d => setBonuses(d?.bonuses ?? []))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { reload() }, [])
+
+  const triggerRecalc = () => {
+    safeFetchJson('/api/dashboard', null).then(d => {
+      if (d?.run?.id) {
+        fetch(`/api/recalculate?runId=${d.run.id}`, { method: 'POST' })
+          .then(() => toast.success('Payroll recalculated with new bonuses'))
+          .catch(() => toast.error('Recalculation failed'))
+      }
+    })
+  }
+
+  const handleAdd = async () => {
+    if (!newName || !newAmount) { toast.error('Name and amount required'); return }
+    setSaving(true)
+    try {
+      const resp = await fetch('/api/custom-bonuses', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, nameAr: newNameAr, amount: parseFloat(newAmount), type: 'fixed' }),
+      })
+      if (resp.ok) {
+        toast.success(`Bonus "${newName}" added — recalculating...`)
+        setNewName(''); setNewNameAr(''); setNewAmount(''); setAdding(false)
+        reload()
+        triggerRecalc()
+      } else { toast.error('Add failed') }
+    } finally { setSaving(false) }
+  }
+
+  const handleToggle = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
+    await fetch('/api/custom-bonuses', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: newStatus }),
+    })
+    toast.success(`Bonus ${newStatus === 'active' ? 'activated' : 'deactivated'} — recalculating...`)
+    reload()
+    triggerRecalc()
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this bonus?')) return
+    await fetch(`/api/custom-bonuses?id=${id}`, { method: 'DELETE' })
+    toast.success('Deleted — recalculating...')
+    reload()
+    triggerRecalc()
+  }
+
+  const activeTotal = bonuses.filter(b => b.status === 'active').reduce((a, b) => a + b.amount, 0)
+
+  return (
+    <Card className="card-glow border-amber-200 dark:border-amber-900/40">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-2">
+            <Gift className="h-4 w-4 text-amber-500" />
+            Custom Bonuses
+          </span>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px]">
+              {bonuses.filter(b => b.status === 'active').length} active · SAR {activeTotal.toFixed(2)}/rider
+            </Badge>
+            <Button size="sm" variant="outline" onClick={() => setAdding(!adding)}>
+              <Plus className="h-3.5 w-3.5" /> Add Bonus
+            </Button>
+          </div>
+        </CardTitle>
+        <CardDescription>
+          Define custom bonuses that apply to ALL riders automatically · added to gross salary · takes effect immediately
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Add new form */}
+        {adding && (
+          <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[10px]">Bonus Name (English)</Label>
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Mecca Hajj Bonus" className="h-8" />
+              </div>
+              <div>
+                <Label className="text-[10px]">Bonus Name (Arabic)</Label>
+                <Input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="مكافأة حج مكة" className="h-8" dir="rtl" style={{ fontFamily: 'var(--font-arabic)' }} />
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label className="text-[10px]">Amount per Rider (SAR)</Label>
+                <Input type="number" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} placeholder="e.g. 500" className="h-8" step="0.01" />
+              </div>
+              <Button size="sm" onClick={handleAdd} disabled={saving}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                Add & Apply
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setAdding(false)}>Cancel</Button>
+            </div>
+            <p className="text-[10px] text-amber-700 dark:text-amber-300">
+              ℹ️ This bonus will be added to every rider's gross salary immediately. All payslips and results update automatically.
+            </p>
+          </div>
+        )}
+
+        {/* Existing bonuses list */}
+        {loading ? (
+          <div className="text-center text-muted-foreground py-4 text-sm">Loading...</div>
+        ) : bonuses.length === 0 ? (
+          <div className="text-center text-muted-foreground py-4 text-sm">
+            <Gift className="mx-auto h-8 w-8 opacity-40 mb-1" />
+            No custom bonuses defined yet
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {bonuses.map(b => (
+              <div key={b.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-500/10 text-amber-600">
+                  <Gift className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm">{b.name}</div>
+                  {b.nameAr && <div className="text-xs text-muted-foreground" dir="rtl" style={{ fontFamily: 'var(--font-arabic)' }}>{b.nameAr}</div>}
+                </div>
+                <div className="text-right">
+                  <div className="font-bold tabular-nums text-emerald-600">+SAR {b.amount.toFixed(2)}</div>
+                  <div className="text-[10px] text-muted-foreground">per rider</div>
+                </div>
+                <Badge variant="outline" className={cn('text-[9px]', b.status === 'active' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-muted text-muted-foreground')}>
+                  {b.status}
+                </Badge>
+                <Switch checked={b.status === 'active'} onCheckedChange={() => handleToggle(b.id, b.status)} />
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(b.id)}>
+                  <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                </Button>
+              </div>
+            ))}
+            {activeTotal > 0 && (
+              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 p-2 text-xs text-emerald-700 dark:text-emerald-300 text-center">
+                Total active custom bonuses: <strong>SAR {activeTotal.toFixed(2)}</strong> per rider · applies to all payslips automatically
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
