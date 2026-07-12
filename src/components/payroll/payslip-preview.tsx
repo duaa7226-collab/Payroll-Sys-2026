@@ -81,13 +81,13 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
   const missedDays = Math.abs(p.missed_days || 0)
   const riderBalance = Math.abs(p.rider_balance || 0)
 
-  // Driver info fields (2x3 grid)
+  // Driver info fields (6 separate bordered boxes, 2x3 grid)
   const driverInfoFields = [
-    { ar: 'اسم المستفيد', en: 'Beneficiary', val: driver?.beneficiaryName || result.driverName, mono: false },
-    { ar: 'معرف المندوب', en: 'Rider ID', val: result.riderId, mono: true },
-    { ar: 'العقد', en: 'Contract', val: result.contractName, mono: true },
-    { ar: 'نوع المركبة', en: 'Vehicle', val: result.vehicleType, mono: false },
-    { ar: 'البنك', en: 'Bank', val: driver?.bankName || '—', mono: false },
+    { ar: 'اسم المستفيد', en: 'BENEFICIARY', val: driver?.beneficiaryName || result.driverName, mono: false },
+    { ar: 'معرف المندوب', en: 'RIDER ID', val: result.riderId, mono: true },
+    { ar: 'العقد', en: 'CONTRACT', val: result.contractName, mono: true },
+    { ar: 'نوع المركبة', en: 'VEHICLE', val: result.vehicleType, mono: false },
+    { ar: 'البنك', en: 'BANK', val: driver?.bankName || '—', mono: false },
     { ar: 'الآيبان', en: 'IBAN', val: driver?.iban || '—', mono: true },
   ]
 
@@ -165,17 +165,19 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
           </div>
         </div>
 
-        {/* ===== Driver Info Card — 2 rows × 3 cols ===== */}
-        <div style={{ marginTop: '10px', background: 'white', border: '1px solid #E0E0E0', borderRadius: '8px', padding: '10px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', flexShrink: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', rowGap: '8px' }}>
-            {driverInfoFields.map((f, i) => (
-              <div key={i}>
-                <div style={{ fontSize: '11px', color: '#666666', fontWeight: 500 }} dir="rtl">{f.ar}</div>
-                <div style={{ fontSize: '9px', color: '#9ca3af' }}>{f.en}</div>
-                <div style={{ fontSize: f.mono ? '11px' : '13px', fontWeight: 700, color: '#111111', marginTop: '1px', wordBreak: 'break-all', fontFamily: f.mono ? 'monospace' : 'inherit' }}>{f.val}</div>
+        {/* ===== Driver Info — 6 separate bordered boxes (2 rows × 3 cols), label ABOVE each box ===== */}
+        <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', rowGap: '12px', flexShrink: 0 }}>
+          {driverInfoFields.map((f, i) => (
+            <div key={i}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '3px', padding: '0 2px' }}>
+                <div style={{ fontSize: '8px', color: '#9ca3af', fontWeight: 700, letterSpacing: '0.8px' }}>{f.en}</div>
+                <div style={{ fontSize: '11px', color: '#374151', fontWeight: 600 }} dir="rtl">{f.ar}</div>
               </div>
-            ))}
-          </div>
+              <div style={{ background: 'white', border: '1px solid #E0E0E0', borderRadius: '6px', padding: '8px 12px', boxShadow: '0 1px 2px rgba(0,0,0,0.04)', minHeight: '32px', display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: f.mono ? '11px' : '13px', fontWeight: 700, color: '#111111', wordBreak: 'break-all', fontFamily: f.mono ? 'monospace' : 'inherit' }}>{f.val}</span>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* ===== Stats Section — 1 row of 6 cells, accent bar UNDER each ===== */}

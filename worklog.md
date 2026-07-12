@@ -92,3 +92,32 @@ Stage Summary:
 - Numbers formatted with thousand separators + SAR suffix
 - Color palette: blue #1e3a8a + orange #ea580c + light gray #f8fafc
 - Layout: header → driver info (2×3) → stats (1×6) → earnings/deductions side-by-side → net salary bar → signatures (3-col with stamp) → footer
+
+---
+Task ID: fix-driver-info-form-style
+Agent: main
+Task: Make driver info section look like form fields — 6 separate bordered boxes, label above each box, value inside box
+
+Work Log:
+- Analyzed user's uploaded screenshot (pasted_image_1783881170829.png) with VLM
+- Confirmed reference payslip has 6 SEPARATE bordered boxes (not one big card)
+- Confirmed layout: 2 rows × 3 columns
+- Confirmed each box has its own border (light gray #E0E0E0)
+- Confirmed label is ABOVE the box (not inside)
+- Confirmed value is INSIDE the box, displayed as form-field-like
+- Updated src/lib/payslip-pdf.ts driver info section:
+  * Removed outer card wrapper
+  * Each field is now its own bordered box with white background
+  * Label above each box: English (uppercase, 8px, gray) on LEFT, Arabic (11px, dark) on RIGHT
+  * Value inside box: 13px bold black (11px monospace for IDs/IBAN)
+  * Border: 1px solid #E0E0E0, border-radius: 6px
+  * Padding: 8px 12px, min-height 32px
+  * Subtle shadow: 0 1px 2px rgba(0,0,0,0.04)
+- Updated src/components/payroll/payslip-preview.tsx with matching JSX
+- Updated field labels: BENEFICIARY / RIDER ID / CONTRACT / VEHICLE / BANK / IBAN (uppercase, letter-spaced)
+
+Stage Summary:
+- Driver info section now matches reference exactly: 6 separate form-field-like boxes
+- Each box has label above (English left + Arabic right) and value inside (bold)
+- Visual style: white background, light gray border, 6px radius, subtle shadow
+- Layout: 2 rows × 3 columns grid, 10px gap, 12px row-gap
