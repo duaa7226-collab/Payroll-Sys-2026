@@ -21,14 +21,6 @@ const PENALTY_LABELS: Record<string, { en: string; ar: string }> = {
   tga_deduction: { en: 'TGA Deduction', ar: 'خصم TGA' },
 }
 
-const BAND_LABELS: Record<string, { en: string; ar: string }> = {
-  top: { en: 'Top Performer', ar: 'أفضل أداء' },
-  high: { en: 'High', ar: 'عالي' },
-  average: { en: 'Average', ar: 'متوسط' },
-  low: { en: 'Low', ar: 'منخفض' },
-  bottom: { en: 'Bottom', ar: 'الأقل' },
-}
-
 export function PayslipPreview({ resultId }: { resultId: string }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -80,15 +72,31 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
   }
 
   const penaltyEntries = Object.entries(penalties).filter(([_, v]) => (v as number) > 0)
-  const baseSalaryLabel = result.salaryDivisorMode === 'orders_based_mode' ? 'Base Salary' : 'Adjusted Base Salary'
-  const baseSalaryValue = result.salaryDivisorMode === 'orders_based_mode'
-    ? result.baseSalaryEquivalent
-    : result.adjustedBaseSalary
   const totalDeductions = result.totalOtherPenalties + result.trafficViolationsDeduction + result.missingOrderDeduction
   const attainmentPct = result.selectedTargetThreshold > 0
     ? ((result.completedOrders / result.selectedTargetThreshold) * 100).toFixed(1)
-    : 'N/A'
-  const band = BAND_LABELS[result.performanceBand] ?? { en: result.performanceBand, ar: '' }
+    : '0'
+  const salaryPerOrder = result.appliedSalaryPerOrder || (result.appliedBaseSalary / result.appliedMonthlyTarget) || 0
+
+  // Driver info fields
+  const driverInfoFields = [
+    { ar: 'اسم المستفيد', en: 'Beneficiary', val: driver?.beneficiaryName || result.driverName, mono: false },
+    { ar: 'معرف المندوب', en: 'Rider ID', val: result.riderId, mono: true },
+    { ar: 'العقد', en: 'Contract', val: result.contractName, mono: true },
+    { ar: 'البنك', en: 'Bank', val: driver?.bankName || '—', mono: false },
+    { ar: 'الآيبان', en: 'IBAN', val: driver?.iban || '—', mono: true },
+    { ar: 'نوع المركبة', en: 'Vehicle', val: result.vehicleType, mono: false },
+  ]
+
+  // Stats fields
+  const statsFields = [
+    { ar: 'أيام العمل', en: 'Working Days', val: result.actualWorkingDays.toFixed(0), color: '#0A3D62' },
+    { ar: 'الطلبات المكتملة', en: 'Completed', val: result.completedOrders, color: '#0A3D62' },
+    { ar: 'الطلبات المتوقعة', en: 'Target', val: result.selectedTargetThreshold.toFixed(0), color: '#666666' },
+    { ar: 'سعر الطلب', en: 'Per Order', val: salaryPerOrder.toFixed(2), color: '#0A3D62' },
+    { ar: 'طلبات إضافية', en: 'Extra', val: result.extraOrders, color: '#059669' },
+    { ar: 'طلبات مفقودة', en: 'Missing', val: result.missingOrders, color: '#dc2626' },
+  ]
 
   return (
     <div className="space-y-3 p-4 no-print">
@@ -108,326 +116,262 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
         </div>
       </div>
 
-      {/* The actual printable payslip — premium, modern, fills one A4 page */}
-      <div className="printable-payslip bg-white text-black mx-auto" style={{ width: '800px', height: '1131px', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'var(--font-cairo), Cairo, sans-serif' }}>
-        {/* ===== Premium Header ===== */}
-        <div style={{ background: 'linear-gradient(135deg, #064e3b 0%, #047857 60%, #059669 100%)', color: 'white', padding: '18px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '180px', height: '180px', background: 'radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)', borderRadius: '50%' }} />
-          <div style={{ flex: 1, position: 'relative' }}>
-            <div style={{ fontSize: '9px', letterSpacing: '3px', textTransform: 'uppercase', opacity: 0.75, fontWeight: 500 }}>
-              Salary Statement · <span dir="rtl">كشف راتب</span>
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: 700, marginTop: '3px', letterSpacing: '-0.5px' }}>
-              {company?.name || 'Nokhaba Tatweer for Trading'}
-            </div>
-            <div style={{ fontSize: '12px', opacity: 0.9, marginTop: '1px' }} dir="rtl">
-              {company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}
-            </div>
-            <div style={{ fontSize: '9px', opacity: 0.7, marginTop: '4px', letterSpacing: '0.3px' }}>
-              {company?.address || 'Riyadh, Saudi Arabia'} · VAT: {company?.vatNumber || 'N/A'}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right', position: 'relative' }}>
+      {/* ===== Printable payslip — Elite Development design ===== */}
+      <div className="printable-payslip bg-white text-black mx-auto" style={{ width: '800px', height: '1131px', padding: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'var(--font-cairo), Cairo, sans-serif' }}>
+        {/* ===== Header — blue → orange gradient ===== */}
+        <div style={{ background: 'linear-gradient(90deg, #0A3D62 0%, #0A3D62 35%, #FF6B35 100%)', color: 'white', borderRadius: '12px', padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 12px rgba(10, 61, 98, 0.18)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             {company?.logo ? (
-              <div style={{ marginBottom: '6px' }}>
-                <img src={company.logo} alt="Logo" style={{ maxHeight: '48px', maxWidth: '110px', objectFit: 'contain', background: 'white', padding: '5px', borderRadius: '6px' }} />
+              <img src={company.logo} alt="Logo" style={{ height: '48px', width: '48px', objectFit: 'contain', background: 'white', padding: '4px', borderRadius: '50%', border: '2px solid #FF6B35' }} />
+            ) : (
+              <div style={{ height: '48px', width: '48px', background: 'white', borderRadius: '50%', border: '2px solid #FF6B35', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0A3D62', fontWeight: 800, fontSize: '18px' }}>
+                {(company?.name || 'E').charAt(0)}
               </div>
-            ) : null}
-            <div style={{ background: 'rgba(255,255,255,0.15)', padding: '5px 14px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.25)' }}>
-              <div style={{ fontSize: '8px', opacity: 0.85, letterSpacing: '1.5px', textTransform: 'uppercase' }}>Pay Period</div>
-              <div style={{ fontSize: '14px', fontWeight: 700 }}>{result.payrollMonth}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* ===== Driver Identity ===== */}
-        <div style={{ padding: '10px 30px', background: 'linear-gradient(180deg, #f9fafb 0%, #ffffff 100%)', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px' }}>
-            {[
-              { en: 'Driver Name', ar: 'اسم السائق', val: result.driverName, mono: false },
-              { en: 'Rider ID', ar: 'معرف المندوب', val: result.riderId, mono: true },
-              { en: 'Contract', ar: 'العقد', val: result.contractName, mono: true },
-              { en: 'Vehicle Type', ar: 'نوع المركبة', val: result.vehicleType, mono: false },
-            ].map((info, i) => (
-              <div key={i} style={{ padding: '6px 10px', background: 'white', borderRadius: '6px', borderLeft: '3px solid #047857', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-                <div style={{ fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: '#6b7280', fontWeight: 600 }}>{info.en}</div>
-                <div style={{ fontSize: '8px', color: '#9ca3af' }} dir="rtl">{info.ar}</div>
-                <div style={{ fontSize: info.mono ? '11px' : '13px', fontWeight: 700, marginTop: '2px', color: '#111827', fontFamily: info.mono ? 'monospace' : 'inherit' }}>{info.val}</div>
-              </div>
-            ))}
-          </div>
-          {/* Performance strip */}
-          <div style={{ marginTop: '8px', padding: '5px 12px', background: '#f0fdf4', borderRadius: '6px', border: '1px solid #bbf7d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px' }}>
+            )}
             <div>
-              <span style={{ color: '#6b7280', fontWeight: 500 }}>Performance: </span>
-              <span style={{ fontWeight: 700, color: '#065f46' }}>{band.en}</span>
-              <span style={{ color: '#9ca3af', marginLeft: '4px' }} dir="rtl">({band.ar})</span>
+              <div style={{ fontSize: '15px', fontWeight: 700 }} dir="rtl">{company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</div>
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>{company?.name || 'Nokhaba Tatweer for Trading'}</div>
+              <div style={{ fontSize: '9px', opacity: 0.9, marginTop: '2px' }}>VAT: {company?.vatNumber || 'N/A'} · {company?.address || 'Riyadh, KSA'}</div>
             </div>
-            <div>
-              <span style={{ color: '#6b7280', fontWeight: 500 }}>Target Attainment: </span>
-              <span style={{ fontWeight: 700, color: '#065f46' }}>{attainmentPct}%</span>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '18px', fontWeight: 700 }} dir="rtl">بيان المرتب</div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: '#FFEEC2' }}>PAYSLIP</div>
+            <div style={{ fontSize: '11px', opacity: 0.95, marginTop: '2px' }}>{result.payrollMonth}</div>
+          </div>
+        </div>
+
+        {/* ===== Driver Info Card ===== */}
+        <div style={{ marginTop: '12px', background: 'white', border: '1px solid #E0E0E0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 2px 4px rgba(0,0,0,0.04)', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', rowGap: '10px' }}>
+            {driverInfoFields.map((f, i) => (
+              <div key={i}>
+                <div style={{ fontSize: '11px', color: '#666666', fontWeight: 500 }} dir="rtl">{f.ar}</div>
+                <div style={{ fontSize: '9px', color: '#9ca3af' }}>{f.en}</div>
+                <div style={{ fontSize: f.mono ? '11px' : '13px', fontWeight: 700, color: '#111111', marginTop: '2px', wordBreak: 'break-all', fontFamily: f.mono ? 'monospace' : 'inherit' }}>{f.val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ===== Stats Section ===== */}
+        <div style={{ marginTop: '10px', background: 'white', border: '1px solid #E0E0E0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 2px 4px rgba(0,0,0,0.04)', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }}>
+            {statsFields.map((s, i) => (
+              <div key={i} style={{ textAlign: 'center', padding: '6px 4px', background: '#F8FAFC', borderRadius: '6px', borderBottom: `2px solid ${s.color}` }}>
+                <div style={{ fontSize: '9px', color: '#666666', fontWeight: 600 }} dir="rtl">{s.ar}</div>
+                <div style={{ fontSize: '8px', color: '#9ca3af' }}>{s.en}</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: s.color, marginTop: '3px', fontVariantNumeric: 'tabular-nums' }}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ===== Earnings + Deductions side-by-side ===== */}
+        <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', flex: 1, minHeight: 0 }}>
+          {/* Earnings Card (blue) */}
+          <div style={{ background: 'white', border: '1px solid #E0E0E0', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '8px 14px', background: '#0A3D62', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>EARNINGS</div>
+              <div style={{ fontSize: '11px', fontWeight: 600 }} dir="rtl">الأرباح</div>
+            </div>
+            <div style={{ padding: '8px 14px', flex: 1 }}>
+              {/* Base salary row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid #f3f4f6' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#374151', fontWeight: 500 }}>الراتب الأساسي</div>
+                  <div style={{ fontSize: '9px', color: '#9ca3af' }}>Base Salary ({result.selectedTargetThreshold.toFixed(0)} × {salaryPerOrder.toFixed(2)})</div>
+                </div>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#0A3D62', fontVariantNumeric: 'tabular-nums' }}>{result.baseSalaryEquivalent.toFixed(2)} SAR</span>
+              </div>
+              {result.bonusAmount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#374151', fontWeight: 500 }}>مكافأة الطلبات الإضافية</div>
+                    <div style={{ fontSize: '9px', color: '#9ca3af' }}>Bonus ({result.extraOrders} × {result.appliedBonusPerExtra.toFixed(2)})</div>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#0A3D62', fontVariantNumeric: 'tabular-nums' }}>+ {result.bonusAmount.toFixed(2)} SAR</span>
+                </div>
+              )}
+              {(result.segmentPayment || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#374151', fontWeight: 500 }}>دفعة الشريحة</div>
+                    <div style={{ fontSize: '9px', color: '#9ca3af' }}>Segment Payment</div>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#0A3D62', fontVariantNumeric: 'tabular-nums' }}>+ {result.segmentPayment.toFixed(2)} SAR</span>
+                </div>
+              )}
+              {customBonuses.map((cb: any, i: number) => (
+                <div key={`cb-${i}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#374151', fontWeight: 500 }}>{cb.nameAr || cb.name}</div>
+                    <div style={{ fontSize: '9px', color: '#9ca3af' }}>{cb.name}</div>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#0A3D62', fontVariantNumeric: 'tabular-nums' }}>+ {cb.amount.toFixed(2)} SAR</span>
+                </div>
+              ))}
+              {/* Gross total */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '7px 0 0', marginTop: '4px', borderTop: '2px solid #0A3D62' }}>
+                <div>
+                  <div style={{ fontSize: '13px', color: '#0A3D62', fontWeight: 700 }}>الإجمالي</div>
+                  <div style={{ fontSize: '10px', color: '#6b7280' }}>Gross</div>
+                </div>
+                <span style={{ fontSize: '16px', fontWeight: 800, color: '#0A3D62', fontVariantNumeric: 'tabular-nums' }}>{result.grossSalaryBeforePenalties.toFixed(2)} SAR</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Deductions Card (orange) */}
+          <div style={{ background: 'white', border: '1px solid #E0E0E0', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '8px 14px', background: '#FF6B35', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>DEDUCTIONS</div>
+              <div style={{ fontSize: '11px', fontWeight: 600 }} dir="rtl">الخصومات</div>
+            </div>
+            <div style={{ padding: '8px 14px', flex: 1 }}>
+              {result.missingOrderDeduction > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#374151', fontWeight: 500 }}>خصم الطلبات المفقودة</div>
+                    <div style={{ fontSize: '9px', color: '#9ca3af' }}>Missing-Order Deduction</div>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#FF6B35', fontVariantNumeric: 'tabular-nums' }}>– {result.missingOrderDeduction.toFixed(2)} SAR</span>
+                </div>
+              )}
+              {penaltyEntries.map(([key, val]) => {
+                const lbl = PENALTY_LABELS[key] ?? { en: key, ar: key }
+                return (
+                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#374151', fontWeight: 500 }}>{lbl.ar}</div>
+                      <div style={{ fontSize: '9px', color: '#9ca3af' }}>{lbl.en}</div>
+                    </div>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#FF6B35', fontVariantNumeric: 'tabular-nums' }}>– {(val as number).toFixed(2)} SAR</span>
+                  </div>
+                )
+              })}
+              {result.trafficViolationsDeduction > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#374151', fontWeight: 500 }}>المخالفات المرورية</div>
+                    <div style={{ fontSize: '9px', color: '#9ca3af' }}>Traffic Violations</div>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#FF6B35', fontVariantNumeric: 'tabular-nums' }}>– {result.trafficViolationsDeduction.toFixed(2)} SAR</span>
+                </div>
+              )}
+              {customDeductions.map((cd: any, i: number) => (
+                <div key={`cd-${i}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#374151', fontWeight: 500 }}>{cd.nameAr || cd.name}</div>
+                    <div style={{ fontSize: '9px', color: '#9ca3af' }}>{cd.name}</div>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#FF6B35', fontVariantNumeric: 'tabular-nums' }}>– {cd.amount.toFixed(2)} SAR</span>
+                </div>
+              ))}
+              {penaltyEntries.length === 0 && result.missingOrderDeduction === 0 && result.trafficViolationsDeduction === 0 && customDeductions.length === 0 && (
+                <div style={{ padding: '10px 0', textAlign: 'center', color: '#9ca3af', fontSize: '10px' }}>لا توجد خصومات · No deductions applied</div>
+              )}
+              {/* Total deductions */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '7px 0 0', marginTop: '4px', borderTop: '2px solid #FF6B35' }}>
+                <div>
+                  <div style={{ fontSize: '13px', color: '#FF6B35', fontWeight: 700 }}>إجمالي الخصومات</div>
+                  <div style={{ fontSize: '10px', color: '#6b7280' }}>Total Deductions</div>
+                </div>
+                <span style={{ fontSize: '16px', fontWeight: 800, color: '#FF6B35', fontVariantNumeric: 'tabular-nums' }}>{totalDeductions.toFixed(2)} SAR</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* ===== Body two columns ===== */}
-        <div style={{ padding: '12px 30px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', flex: 1, minHeight: 0 }}>
-          {/* Working Summary */}
-          <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <div style={{ marginBottom: '6px', paddingBottom: '4px', borderBottom: '2px solid #064e3b' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', color: '#064e3b', textTransform: 'uppercase' }}>Working Summary</div>
-              <div style={{ fontSize: '11px', color: '#6b7280' }} dir="rtl">ملخص العمل</div>
-            </div>
-            {[
-              { en: 'Completed Orders', ar: 'الطلبات المكتملة', val: result.completedOrders, color: '#111827' },
-              { en: 'Target Orders', ar: 'الهدف', val: result.selectedTargetThreshold.toFixed(0), color: '#6b7280' },
-              { en: 'Working Days', ar: 'أيام العمل', val: result.actualWorkingDays.toFixed(0), color: '#111827' },
-              { en: 'Working Hours', ar: 'ساعات العمل', val: result.workingHours.toFixed(1), color: '#111827' },
-            ].map((row, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px dotted #e5e7eb' }}>
-                <div>
-                  <span style={{ fontSize: '10px', color: '#374151', fontWeight: 500 }}>{row.en}</span>
-                  <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">{row.ar}</span>
-                </div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: row.color, fontVariantNumeric: 'tabular-nums' }}>{row.val}</span>
-              </div>
-            ))}
-            {result.inactiveReason && result.inactiveReason !== 'Active' && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px dotted #e5e7eb' }}>
-                <div>
-                  <span style={{ fontSize: '10px', color: '#374151', fontWeight: 500 }}>Inactive Reason</span>
-                  <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">سبب عدم النشاط</span>
-                </div>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#dc2626' }}>{result.inactiveReason}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Earnings */}
-          <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <div style={{ marginBottom: '6px', paddingBottom: '4px', borderBottom: '2px solid #064e3b' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', color: '#064e3b', textTransform: 'uppercase' }}>Earnings</div>
-              <div style={{ fontSize: '11px', color: '#6b7280' }} dir="rtl">الأرباح</div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px dotted #e5e7eb' }}>
-              <div>
-                <span style={{ fontSize: '10px', color: '#374151', fontWeight: 500 }}>{baseSalaryLabel}</span>
-                <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">الراتب الأساسي</span>
-              </div>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#111827', fontVariantNumeric: 'tabular-nums' }}>SAR {baseSalaryValue.toFixed(2)}</span>
-            </div>
-            {result.bonusAmount > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px dotted #e5e7eb' }}>
-                <div>
-                  <span style={{ fontSize: '10px', color: '#374151', fontWeight: 500 }}>Performance Bonus</span>
-                  <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">مكافأة الأداء</span>
-                </div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#059669', fontVariantNumeric: 'tabular-nums' }}>+SAR {result.bonusAmount.toFixed(2)}</span>
-              </div>
-            )}
-            {(result.segmentPayment || 0) > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px dotted #e5e7eb' }}>
-                <div>
-                  <span style={{ fontSize: '10px', color: '#374151', fontWeight: 500 }}>Segment Payment</span>
-                  <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">دفعة الشريحة</span>
-                </div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#0891b2', fontVariantNumeric: 'tabular-nums' }}>+SAR {result.segmentPayment.toFixed(2)}</span>
-              </div>
-            )}
-            {customBonuses.map((cb: any, i: number) => (
-              <div key={`cb-${i}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px dotted #e5e7eb' }}>
-                <div>
-                  <span style={{ fontSize: '10px', color: '#374151' }}>{cb.name}</span>
-                  {cb.nameAr && <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">{cb.nameAr}</span>}
-                </div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#d97706', fontVariantNumeric: 'tabular-nums' }}>+SAR {cb.amount.toFixed(2)}</span>
-              </div>
-            ))}
-            <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '2px solid #064e3b' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <div>
-                  <span style={{ fontSize: '11px', color: '#374151', fontWeight: 700 }}>Gross Salary</span>
-                  <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">إجمالي الراتب</span>
-                </div>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: '#064e3b', fontVariantNumeric: 'tabular-nums' }}>SAR {result.grossSalaryBeforePenalties.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ===== Deductions table ===== */}
-        <div style={{ padding: '0 30px 8px', flexShrink: 0 }}>
-          <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <div style={{ padding: '6px 12px', background: 'linear-gradient(90deg, #fef2f2 0%, #ffffff 100%)', borderBottom: '2px solid #b91c1c' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', color: '#b91c1c', textTransform: 'uppercase' }}>
-                Deductions · <span style={{ color: '#6b7280', fontWeight: 500 }} dir="rtl">الخصومات</span>
-              </div>
+        {/* ===== Traffic Detail (if any) ===== */}
+        {traffic && traffic.length > 0 && (
+          <div style={{ marginTop: '10px', background: 'white', border: '1px solid #E0E0E0', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.04)', flexShrink: 0 }}>
+            <div style={{ padding: '6px 14px', background: '#FEF3E2', borderBottom: '2px solid #FF6B35', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#92400e', letterSpacing: '0.5px' }}>TRAFFIC TICKETS</div>
+              <div style={{ fontSize: '11px', color: '#92400e', fontWeight: 600 }} dir="rtl">تفاصيل المخالفات</div>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
               <thead>
-                <tr style={{ background: '#fef2f2', color: '#7f1d1d' }}>
-                  <th style={{ textAlign: 'left', padding: '4px 10px', fontWeight: 600, fontSize: '9px' }}>Description</th>
-                  <th style={{ textAlign: 'right', padding: '4px 10px', fontWeight: 600, fontSize: '9px' }}>Amount (SAR)</th>
+                <tr style={{ background: '#FEF3E2', color: '#92400e' }}>
+                  <th style={{ textAlign: 'left', padding: '3px 12px', fontSize: '9px' }}>Date</th>
+                  <th style={{ textAlign: 'left', padding: '3px 12px', fontSize: '9px' }}>Type</th>
+                  <th style={{ textAlign: 'left', padding: '3px 12px', fontSize: '9px' }}>Status</th>
+                  <th style={{ textAlign: 'right', padding: '3px 12px', fontSize: '9px' }}>Amount (SAR)</th>
                 </tr>
               </thead>
               <tbody>
-                {result.missingOrderDeduction > 0 && (
-                  <tr style={{ borderBottom: '1px solid #f3f4f6', background: '#fff7ed' }}>
-                    <td style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 500 }}>
-                      Missing Order Deduction <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">خصم الطلبات الناقصة</span>
-                    </td>
-                    <td style={{ padding: '4px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#9a3412', fontSize: '10px', fontWeight: 600 }}>-{result.missingOrderDeduction.toFixed(2)}</td>
-                  </tr>
-                )}
-                {penaltyEntries.map(([key, val]) => {
-                  const lbl = PENALTY_LABELS[key] ?? { en: key, ar: '' }
-                  return (
-                    <tr key={key} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: '4px 10px', fontSize: '10px' }}>
-                        {lbl.en} <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">{lbl.ar}</span>
-                      </td>
-                      <td style={{ padding: '4px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#b91c1c', fontSize: '10px', fontWeight: 600 }}>-{(val as number).toFixed(2)}</td>
-                    </tr>
-                  )
-                })}
-                {result.trafficViolationsDeduction > 0 && (
-                  <tr style={{ borderBottom: '1px solid #f3f4f6', background: '#fffbeb' }}>
-                    <td style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 500 }}>
-                      Traffic Violations <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">المخالفات المرورية</span>
-                    </td>
-                    <td style={{ padding: '4px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#92400e', fontSize: '10px', fontWeight: 600 }}>-{result.trafficViolationsDeduction.toFixed(2)}</td>
-                  </tr>
-                )}
-                {customDeductions.map((cd: any, i: number) => (
-                  <tr key={`cd-${i}`} style={{ borderBottom: '1px solid #f3f4f6', background: '#fef3c7' }}>
-                    <td style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 500 }}>
-                      {cd.name} {cd.nameAr && <span style={{ fontSize: '9px', color: '#9ca3af', marginLeft: '4px' }} dir="rtl">{cd.nameAr}</span>}
-                    </td>
-                    <td style={{ padding: '4px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#b45309', fontSize: '10px', fontWeight: 600 }}>-{cd.amount.toFixed(2)}</td>
+                {traffic.map((t: any) => (
+                  <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td style={{ padding: '3px 12px', fontSize: '9px' }}>{new Date(t.ticketDate).toLocaleDateString('en-GB')}</td>
+                    <td style={{ padding: '3px 12px', fontSize: '9px' }}>{t.violationType}</td>
+                    <td style={{ padding: '3px 12px', fontSize: '9px', textTransform: 'capitalize' }}>{t.status}</td>
+                    <td style={{ padding: '3px 12px', fontSize: '9px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{t.amount.toFixed(2)}</td>
                   </tr>
                 ))}
-                {penaltyEntries.length === 0 && result.missingOrderDeduction === 0 && result.trafficViolationsDeduction === 0 && customDeductions.length === 0 && (
-                  <tr><td colSpan={2} style={{ padding: '8px 10px', textAlign: 'center', color: '#9ca3af', fontSize: '10px' }}>No deductions applied · لا توجد خصومات</td></tr>
-                )}
-                <tr style={{ fontWeight: 800, background: '#fef2f2', color: '#7f1d1d' }}>
-                  <td style={{ padding: '6px 10px', borderTop: '2px solid #b91c1c' }}>
-                    <span style={{ fontSize: '10px' }}>Total Deductions</span>
-                    <span style={{ fontSize: '9px', color: '#7f1d1d', marginLeft: '4px' }} dir="rtl">إجمالي الخصومات</span>
-                  </td>
-                  <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderTop: '2px solid #b91c1c', fontSize: '11px' }}>-{totalDeductions.toFixed(2)}</td>
-                </tr>
               </tbody>
             </table>
           </div>
-        </div>
-
-        {/* ===== Traffic detail (if any) ===== */}
-        {traffic && traffic.length > 0 && (
-          <div style={{ padding: '0 30px 8px', flexShrink: 0 }}>
-            <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-              <div style={{ padding: '5px 12px', background: 'linear-gradient(90deg, #fffbeb 0%, #ffffff 100%)', borderBottom: '2px solid #92400e' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1px', color: '#92400e', textTransform: 'uppercase' }}>
-                  Traffic Tickets Detail · <span style={{ color: '#6b7280', fontWeight: 500 }} dir="rtl">تفاصيل المخالفات</span>
-                </div>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9px' }}>
-                <thead>
-                  <tr style={{ background: '#fffbeb', color: '#92400e' }}>
-                    <th style={{ textAlign: 'left', padding: '3px 10px', fontSize: '8px' }}>Date</th>
-                    <th style={{ textAlign: 'left', padding: '3px 10px', fontSize: '8px' }}>Type</th>
-                    <th style={{ textAlign: 'left', padding: '3px 10px', fontSize: '8px' }}>Status</th>
-                    <th style={{ textAlign: 'right', padding: '3px 10px', fontSize: '8px' }}>Amount (SAR)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {traffic.map((t: any) => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: '3px 10px', fontSize: '9px' }}>{new Date(t.ticketDate).toLocaleDateString('en-GB')}</td>
-                      <td style={{ padding: '3px 10px', fontSize: '9px' }}>{t.violationType}</td>
-                      <td style={{ padding: '3px 10px', fontSize: '9px', textTransform: 'capitalize' }}>{t.status}</td>
-                      <td style={{ padding: '3px 10px', fontSize: '9px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{t.amount.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         )}
 
-        {/* ===== Final Net Salary — premium hero, immediately above signatures ===== */}
-        <div style={{ margin: '0 30px 6px', padding: '14px 22px', background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 50%, #a7f3d0 100%)', borderRadius: '12px', border: '2px solid #064e3b', boxShadow: '0 4px 14px rgba(6, 78, 59, 0.18)', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, width: '5px', height: '100%', background: '#064e3b' }} />
-          <div style={{ position: 'absolute', top: '-30px', right: '-30px', width: '120px', height: '120px', background: 'radial-gradient(circle, rgba(6,78,59,0.08) 0%, transparent 70%)', borderRadius: '50%' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
-            <div>
-              <div style={{ fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase', color: '#065f46', fontWeight: 700 }}>
-                Final Net Salary
-              </div>
-              <div style={{ fontSize: '13px', color: '#065f46', fontWeight: 700, marginTop: '2px' }} dir="rtl">
-                صافي الراتب النهائي
-              </div>
-              <div style={{ marginTop: '6px', fontSize: '10px', color: '#047857', lineHeight: 1.55 }}>
-                <div><strong>Beneficiary:</strong> {driver?.beneficiaryName || result.driverName}</div>
-                {driver?.bankName && <div><strong>Bank:</strong> {driver.bankName}</div>}
-                {driver?.iban && <div><strong>IBAN:</strong> <span style={{ fontFamily: 'monospace', fontSize: '9px' }}>{driver.iban}</span></div>}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '30px', fontWeight: 800, color: '#064e3b', fontVariantNumeric: 'tabular-nums', letterSpacing: '-1px', lineHeight: 1 }}>
-                SAR {result.finalNetSalary.toFixed(2)}
-              </div>
-              <div style={{ fontSize: '9px', color: '#047857', marginTop: '3px' }}>
-                {company?.currency || 'SAR'} · {result.payrollMonth}
-              </div>
-              <div style={{ fontSize: '8px', color: '#047857', marginTop: '1px' }}>
-                Generated: {new Date().toLocaleDateString('en-GB')}
-              </div>
-            </div>
+        {/* ===== Net Payable Salary — full-width gradient bar ===== */}
+        <div style={{ marginTop: '12px', background: 'linear-gradient(90deg, #0A3D62 0%, #0A3D62 35%, #FF6B35 100%)', borderRadius: '12px', padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 14px rgba(10, 61, 98, 0.25)', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'white' }} dir="rtl">المرتب الصافي المستحق</div>
+            <div style={{ fontSize: '11px', color: '#FFEEC2', marginTop: '2px' }}>NET PAYABLE SALARY · {result.payrollMonth}</div>
+            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.75)', marginTop: '4px' }}>Generated: {new Date().toLocaleDateString('en-GB')} · Attainment: {attainmentPct}%</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '28px', fontWeight: 800, color: 'white', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.5px', lineHeight: 1 }}>{result.finalNetSalary.toFixed(2)}</div>
+            <div style={{ fontSize: '13px', color: '#FFEEC2', fontWeight: 600, marginTop: '2px' }}>SAR</div>
           </div>
         </div>
 
-        {/* ===== Footer + Two signatures ===== */}
-        <div style={{ padding: '10px 30px 12px', borderTop: '2px solid #064e3b', background: 'linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%)', flexShrink: 0 }}>
-          <div style={{ fontSize: '8px', color: '#6b7280', marginBottom: '6px', textAlign: 'center' }}>
-            {company?.footerNote || 'This is a computer-generated payslip and does not require a physical signature.'}
-            <div style={{ marginTop: '1px' }} dir="rtl">
-              {company?.footerNoteAr || 'هذه قسيمة راتب مُولّدة آليًا ولا تتطلب توقيعًا يدويًا.'}
-            </div>
+        {/* ===== Signature Section — 3 columns: Mgr | Stamp | Driver ===== */}
+        <div style={{ marginTop: '14px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', alignItems: 'flex-end', flexShrink: 0 }}>
+          {/* Accounting Manager */}
+          <div style={{ textAlign: 'center' }}>
+            {company?.signatureImg ? (
+              <div style={{ height: '36px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '4px' }}>
+                <img src={company.signatureImg} alt="Accounting Manager Signature" style={{ maxHeight: '34px', objectFit: 'contain' }} />
+              </div>
+            ) : (
+              <div style={{ height: '36px', borderBottom: '1.5px solid #0A3D62', marginBottom: '4px' }} />
+            )}
+            <div style={{ fontSize: '10px', color: '#666666', fontWeight: 600 }}>ACCOUNTING MANAGER</div>
+            <div style={{ fontSize: '10px', color: '#666666' }} dir="rtl">مدير الحسابات</div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '36px', marginTop: '8px' }}>
-            {/* Accounting Manager */}
-            <div style={{ textAlign: 'center' }}>
-              {company?.signatureImg ? (
-                <div style={{ height: '32px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '3px' }}>
-                  <img src={company.signatureImg} alt="Accounting Manager Signature" style={{ maxHeight: '30px', objectFit: 'contain' }} />
-                </div>
-              ) : (
-                <div style={{ height: '32px', borderBottom: '1.5px solid #064e3b', marginBottom: '3px' }} />
-              )}
-              <div style={{ fontSize: '10px', fontWeight: 700, color: '#064e3b' }}>
-                {company?.accManagerName || 'Accounting Manager'}
+          {/* Center Stamp */}
+          <div style={{ textAlign: 'center' }}>
+            {company?.stampImg ? (
+              <div style={{ height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '4px' }}>
+                <img src={company.stampImg} alt="Stamp" style={{ maxHeight: '56px', objectFit: 'contain' }} />
               </div>
-              <div style={{ fontSize: '9px', color: '#047857' }} dir="rtl">
-                مدير الحسابات
+            ) : (
+              <div style={{ height: '56px', width: '56px', margin: '0 auto 4px', border: '2px dashed #FF6B35', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: '#FF6B35' }}>
+                <div style={{ fontSize: '9px', fontWeight: 700 }}>{(company?.name || 'ELITE').slice(0, 8)}</div>
+                <div style={{ fontSize: '7px' }}>KSA</div>
               </div>
-            </div>
-            {/* Driver */}
-            <div style={{ textAlign: 'center' }}>
-              {company?.riderSignatureImg ? (
-                <div style={{ height: '32px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '3px' }}>
-                  <img src={company.riderSignatureImg} alt="Driver Signature" style={{ maxHeight: '30px', objectFit: 'contain' }} />
-                </div>
-              ) : (
-                <div style={{ height: '32px', borderBottom: '1.5px solid #064e3b', marginBottom: '3px' }} />
-              )}
-              <div style={{ fontSize: '10px', fontWeight: 700, color: '#064e3b' }}>
-                Driver Signature
-              </div>
-              <div style={{ fontSize: '9px', color: '#047857' }} dir="rtl">
-                توقيع السائق
-              </div>
-            </div>
+            )}
+            <div style={{ fontSize: '9px', color: '#9ca3af' }}>{company?.name || 'Nokhaba Tatweer'}</div>
           </div>
+          {/* Rider Signature */}
+          <div style={{ textAlign: 'center' }}>
+            {company?.riderSignatureImg ? (
+              <div style={{ height: '36px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '4px' }}>
+                <img src={company.riderSignatureImg} alt="Driver Signature" style={{ maxHeight: '34px', objectFit: 'contain' }} />
+              </div>
+            ) : (
+              <div style={{ height: '36px', borderBottom: '1.5px solid #0A3D62', marginBottom: '4px' }} />
+            )}
+            <div style={{ fontSize: '10px', color: '#666666', fontWeight: 600 }}>RIDER SIGNATURE</div>
+            <div style={{ fontSize: '10px', color: '#666666' }} dir="rtl">توقيع السائق</div>
+          </div>
+        </div>
+
+        {/* ===== Footer ===== */}
+        <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #E0E0E0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '8px', color: '#9ca3af', flexShrink: 0 }}>
+          <div>{company?.name || 'Nokhaba Tatweer for Trading'} — <span dir="rtl">{company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</span></div>
+          <div>Generated {new Date().toLocaleDateString('en-GB')} · {company?.footerNote || 'Computer-generated payslip'}</div>
         </div>
       </div>
     </div>

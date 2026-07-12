@@ -29,3 +29,29 @@ Stage Summary:
 - Both PDFs now use fixed A4 dimensions (800×1131 px) with flex layouts to fill the page completely
 - Modern design: gradient headers, glass-morphism hero, premium card styling, banking info prominent
 - Signatures placed immediately below Final Net Salary hero (no empty space)
+
+---
+Task ID: redesign-payslip-elite-design
+Agent: main
+Task: Redesign payslip to match the Elite Development reference exactly — blue→orange gradient, Arabic-first labels, side-by-side earnings/deductions, stats grid, stamp in signatures
+
+Work Log:
+- Analyzed reference PDF "Elite Development — Enterprise Logistics Platform.pdf" with VLM
+- Extracted exact design specs: blue #0A3D62 → orange #FF6B35 gradient header, Arabic-first labels, side-by-side earnings/deductions cards, 6-stat grid, gradient net salary bar, 3-column signature with stamp
+- Rewrote src/lib/payslip-pdf.ts buildPayslipHTML() — new Elite Development design
+- Rewrote src/components/payroll/payslip-preview.tsx React component to mirror exactly
+- Added stats section: Working Days / Completed / Target / Per Order / Extra / Missing (6 KPIs)
+- Reorganized driver info: Beneficiary, Rider ID, Contract, Bank, IBAN, Vehicle (6 fields, 2×3 grid)
+- Side-by-side Earnings (blue header #0A3D62) + Deductions (orange header #FF6B35)
+- Each row: Arabic label PRIMARY, English label secondary, value right-aligned with SAR suffix
+- Net Payable Salary: full-width gradient bar (blue→orange), Arabic label primary
+- Signatures: 3-column (Accounting Manager | Stamp | Rider Signature) — uses stampImg from company
+- All Arabic text uses dir="rtl" with Cairo font
+- Layout uses flex column with 800×1131px (A4) fixed dimensions, fills page completely
+
+Stage Summary:
+- Payslip now matches the Elite Development reference design exactly
+- Arabic and English text both render correctly with proper RTL direction
+- All info fits on one A4 page with no whitespace
+- Modern design: gradient header, color-coded cards (blue=earnings, orange=deductions), prominent net salary hero
+- Stamp area uses company.stampImg if available, falls back to dashed orange circle with company initial
