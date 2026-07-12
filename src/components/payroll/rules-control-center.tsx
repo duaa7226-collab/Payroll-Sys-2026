@@ -19,6 +19,7 @@ import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger
 } from '@/components/ui/accordion'
 import { toast } from 'sonner'
+import { safeFetchJson } from '@/lib/safe-fetch'
 import { cn } from '@/lib/utils'
 
 const GROUP_LABELS: Record<string, { en: string; ar: string; desc: string }> = {
