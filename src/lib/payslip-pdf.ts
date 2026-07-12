@@ -207,6 +207,16 @@ function buildPayslipHTML(data: any): string {
         <td style="padding: 3px 8px; text-align: right; font-variant-numeric: tabular-nums; color: #92400e; font-size: 10px;">-${result.trafficViolationsDeduction.toFixed(2)}</td>
       </tr>`)
   }
+  // Custom deductions (from Rules Control Center)
+  for (const cd of (data.customDeductions || [])) {
+    deductionRows.push(`
+      <tr style="border-bottom: 1px solid #f3f4f6; background: #fef3c7;">
+        <td style="padding: 3px 8px; font-size: 10px; font-weight: 500;">
+          ${cd.name} ${cd.nameAr ? `<span style="font-size: 9px; color: #9ca3af;" dir="rtl">${cd.nameAr}</span>` : ''}
+        </td>
+        <td style="padding: 3px 8px; text-align: right; font-variant-numeric: tabular-nums; color: #b45309; font-size: 10px;">-${cd.amount.toFixed(2)}</td>
+      </tr>`)
+  }
   if (deductionRows.length === 0) {
     deductionRows.push(`<tr><td colspan="2" style="padding: 6px; text-align: center; color: #9ca3af; font-size: 10px;">No deductions applied</td></tr>`)
   }

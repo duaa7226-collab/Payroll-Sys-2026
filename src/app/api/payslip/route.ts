@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getActiveCustomBonuses } from '@/lib/custom-bonus-helpers'
+import { getActiveCustomDeductions } from '@/lib/custom-deduction-helpers'
 
 // GET /api/payslip?resultId=...
 export async function GET(req: NextRequest) {
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
   })
   const customBonuses = await getActiveCustomBonuses()
+  const customDeductions = await getActiveCustomDeductions()
 
   const penalties = JSON.parse(result.penaltiesJson || '{}')
 
@@ -36,5 +38,6 @@ export async function GET(req: NextRequest) {
     penalties,
     manualAdjustments,
     customBonuses,
+    customDeductions,
   })
 }

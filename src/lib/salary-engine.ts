@@ -29,6 +29,8 @@ export interface RawDriverData {
   trafficViolationsTotal: number
   // Custom bonuses (from Rules Control Center)
   customBonuses: Array<{ name: string; nameAr: string | null; amount: number }>
+  // Custom deductions (from Rules Control Center)
+  customDeductions: Array<{ name: string; nameAr: string | null; amount: number }>
 }
 
 export interface DriverResultCalc {
@@ -72,6 +74,9 @@ export interface DriverResultCalc {
   // Custom bonuses (from Rules Control Center)
   customBonuses: Array<{ name: string; nameAr: string | null; amount: number }>
   customBonusTotal: number
+  // Custom deductions (from Rules Control Center)
+  customDeductions: Array<{ name: string; nameAr: string | null; amount: number }>
+  customDeductionTotal: number
   // Penalties
   penalties: Record<string, number>
   totalOtherPenalties: number
@@ -201,6 +206,10 @@ export function calculateDriverSalary(
   const customBonuses = raw.customBonuses || []
   const customBonusTotal = customBonuses.reduce((a, b) => a + b.amount, 0)
 
+  // ====== Custom deductions (from Rules Control Center) ======
+  const customDeductions = raw.customDeductions || []
+  const customDeductionTotal = customDeductions.reduce((a, b) => a + b.amount, 0)
+
   // ====== Gross salary calculation per mode ======
   let grossBeforePenalties = 0
   if (salaryMode === 'days_prorated_mode') {
@@ -259,7 +268,7 @@ export function calculateDriverSalary(
   const trafficViolationsDeduction = trafficEnabled ? (raw.trafficViolationsTotal || 0) : 0
 
   // ====== Final net salary ======
-  let totalDeductions = totalOtherPenalties + trafficViolationsDeduction
+  let totalDeductions = totalOtherPenalties + trafficViolationsDeduction + customDeductionTotal
   if (deductionCap > 0 && totalDeductions > deductionCap) {
     totalDeductions = deductionCap
   }
@@ -334,6 +343,8 @@ export function calculateDriverSalary(
     segmentPayment,
     customBonuses,
     customBonusTotal,
+    customDeductions,
+    customDeductionTotal,
     penalties,
     totalOtherPenalties,
     trafficViolationsDeduction,

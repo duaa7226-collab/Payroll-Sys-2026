@@ -4,6 +4,7 @@ import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
 import { getAllRiderTrafficDeductions } from '@/lib/traffic-helpers'
 import { getAllRiderManualAdjustments } from '@/lib/manual-adjustment-helpers'
 import { getActiveCustomBonuses } from '@/lib/custom-bonus-helpers'
+import { getActiveCustomDeductions } from '@/lib/custom-deduction-helpers'
 import { calculateDriverSalary } from '@/lib/salary-engine'
 
 // POST /api/recalculate?runId=...
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     const trafficByRider = await getAllRiderTrafficDeductions(riderIds)
     const manualByRider = await getAllRiderManualAdjustments(riderIds)
     const customBonuses = await getActiveCustomBonuses()
+    const customDeductions = await getActiveCustomDeductions()
 
     let totalGross = 0, totalPenalties = 0, totalNet = 0, totalVariance = 0, totalTraffic = 0
 
@@ -56,6 +58,7 @@ export async function POST(req: NextRequest) {
         manualBonuses: (manualByRider.get(existing.riderId)?.bonuses ?? []).map(b => ({ title: b.title, amount: b.amount })),
         manualDeductions: (manualByRider.get(existing.riderId)?.deductions ?? []).map(d => ({ title: d.title, amount: d.amount })),
         customBonuses: customBonuses.map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount })),
+        customDeductions: customDeductions.map(d => ({ name: d.name, nameAr: d.nameAr, amount: d.amount })),
       }
 
       const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, payrollRun.payrollMonth)

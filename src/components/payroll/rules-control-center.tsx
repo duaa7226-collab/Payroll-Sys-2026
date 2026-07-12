@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   Settings2, Save, RefreshCw, Check, AlertTriangle, RotateCcw,
   ChevronDown, ChevronRight, FileText, History, Info, Beaker, Layers,
-  Plus, Trash2, Gift, Loader2
+  Plus, Trash2, Gift, Loader2, MinusCircle
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -207,6 +207,7 @@ export function RulesControlCenter() {
 
       {/* Custom Bonuses Section */}
       <CustomBonusesSection />
+      <CustomDeductionsSection />
 
       {/* Audit log teaser */}
       <Card className="card-glow">
@@ -379,6 +380,169 @@ function CustomBonusesSection() {
             {activeTotal > 0 && (
               <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 p-2 text-xs text-emerald-700 dark:text-emerald-300 text-center">
                 Total active custom bonuses: <strong>SAR {activeTotal.toFixed(2)}</strong> per rider · applies to all payslips automatically
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
+// Custom Deductions Management Section
+// ============================================================
+function CustomDeductionsSection() {
+  const [deductions, setDeductions] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newNameAr, setNewNameAr] = useState('')
+  const [newAmount, setNewAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const reload = () => {
+    setLoading(true)
+    safeFetchJson('/api/custom-deductions', { deductions: [] })
+      .then(d => setDeductions(d?.deductions ?? []))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { reload() }, [])
+
+  const triggerRecalc = () => {
+    safeFetchJson('/api/dashboard', null).then(d => {
+      if (d?.run?.id) {
+        fetch(`/api/recalculate?runId=${d.run.id}`, { method: 'POST' })
+          .then(() => toast.success('Payroll recalculated with new deductions'))
+          .catch(() => toast.error('Recalculation failed'))
+      }
+    })
+  }
+
+  const handleAdd = async () => {
+    if (!newName || !newAmount) { toast.error('Name and amount required'); return }
+    setSaving(true)
+    try {
+      const resp = await fetch('/api/custom-deductions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, nameAr: newNameAr, amount: parseFloat(newAmount) }),
+      })
+      if (resp.ok) {
+        toast.success(`Deduction "${newName}" added — recalculating...`)
+        setNewName(''); setNewNameAr(''); setNewAmount(''); setAdding(false)
+        reload()
+        triggerRecalc()
+      } else { toast.error('Add failed') }
+    } finally { setSaving(false) }
+  }
+
+  const handleToggle = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
+    await fetch('/api/custom-deductions', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: newStatus }),
+    })
+    toast.success(`Deduction ${newStatus === 'active' ? 'activated' : 'deactivated'} — recalculating...`)
+    reload()
+    triggerRecalc()
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this deduction?')) return
+    await fetch(`/api/custom-deductions?id=${id}`, { method: 'DELETE' })
+    toast.success('Deleted — recalculating...')
+    reload()
+    triggerRecalc()
+  }
+
+  const activeTotal = deductions.filter(d => d.status === 'active').reduce((a, d) => a + d.amount, 0)
+
+  return (
+    <Card className="card-glow border-rose-200 dark:border-rose-900/40">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-2">
+            <MinusCircle className="h-4 w-4 text-rose-500" />
+            Custom Deductions
+          </span>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px]">
+              {deductions.filter(d => d.status === 'active').length} active · SAR {activeTotal.toFixed(2)}/rider
+            </Badge>
+            <Button size="sm" variant="outline" onClick={() => setAdding(!adding)}>
+              <Plus className="h-3.5 w-3.5" /> Add Deduction
+            </Button>
+          </div>
+        </CardTitle>
+        <CardDescription>
+          Define custom deductions that apply to ALL riders automatically · subtracted from net salary · takes effect immediately
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {adding && (
+          <div className="rounded-lg border border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20 p-3 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[10px]">Deduction Name (English)</Label>
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Insurance Premium" className="h-8" />
+              </div>
+              <div>
+                <Label className="text-[10px]">Deduction Name (Arabic)</Label>
+                <Input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="قسط التأمين" className="h-8" dir="rtl" style={{ fontFamily: 'var(--font-arabic)' }} />
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label className="text-[10px]">Amount per Rider (SAR)</Label>
+                <Input type="number" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} placeholder="e.g. 150" className="h-8" step="0.01" />
+              </div>
+              <Button size="sm" onClick={handleAdd} disabled={saving}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                Add & Apply
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setAdding(false)}>Cancel</Button>
+            </div>
+            <p className="text-[10px] text-rose-700 dark:text-rose-300">
+              ℹ️ This deduction will be subtracted from every rider's net salary immediately. All payslips and results update automatically.
+            </p>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="text-center text-muted-foreground py-4 text-sm">Loading...</div>
+        ) : deductions.length === 0 ? (
+          <div className="text-center text-muted-foreground py-4 text-sm">
+            <MinusCircle className="mx-auto h-8 w-8 opacity-40 mb-1" />
+            No custom deductions defined yet
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {deductions.map(d => (
+              <div key={d.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                <div className="grid h-9 w-9 place-items-center rounded-lg bg-rose-500/10 text-rose-600">
+                  <MinusCircle className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm">{d.name}</div>
+                  {d.nameAr && <div className="text-xs text-muted-foreground" dir="rtl" style={{ fontFamily: 'var(--font-arabic)' }}>{d.nameAr}</div>}
+                </div>
+                <div className="text-right">
+                  <div className="font-bold tabular-nums text-rose-600">-SAR {d.amount.toFixed(2)}</div>
+                  <div className="text-[10px] text-muted-foreground">per rider</div>
+                </div>
+                <Badge variant="outline" className={cn('text-[9px]', d.status === 'active' ? 'bg-rose-500/10 text-rose-700' : 'bg-muted text-muted-foreground')}>
+                  {d.status}
+                </Badge>
+                <Switch checked={d.status === 'active'} onCheckedChange={() => handleToggle(d.id, d.status)} />
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(d.id)}>
+                  <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                </Button>
+              </div>
+            ))}
+            {activeTotal > 0 && (
+              <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 p-2 text-xs text-rose-700 dark:text-rose-300 text-center">
+                Total active custom deductions: <strong>SAR {activeTotal.toFixed(2)}</strong> per rider · subtracted from all payslips automatically
               </div>
             )}
           </div>

@@ -111,6 +111,7 @@ model Driver {
   updatedAt     DateTime @updatedAt
   results       DriverResult[]
   violations    TrafficViolation[]
+  manualAdjustments ManualAdjustment[]
 }
 
 // ============================================================
@@ -227,6 +228,25 @@ model TrafficViolation {
 }
 
 // ============================================================
+// MANUAL ADJUSTMENTS (License Issuing, Custom Bonuses/Deductions per rider)
+// ============================================================
+model ManualAdjustment {
+  id          String   @id @default(cuid())
+  driverId    String
+  riderId     String
+  title       String
+  titleAr     String?
+  amount      Float
+  type        String   // 'bonus' | 'deduction'
+  category    String   @default("custom") // 'license' | 'custom_bonus' | 'custom_deduction'
+  status      String   @default("active") // 'active' | 'inactive' | 'paid'
+  notes       String?
+  payrollRunId String?
+  createdAt   DateTime @default(now())
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
 // CUSTOM BONUSES (defined from Rules Control Center, apply to all riders)
 // ============================================================
 model CustomBonus {
@@ -237,6 +257,20 @@ model CustomBonus {
   type        String   @default("fixed") // fixed | per_order
   description String?
   status      String   @default("active") // active | inactive
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================================
+// CUSTOM DEDUCTIONS (defined from Rules Control Center, apply to all riders)
+// ============================================================
+model CustomDeduction {
+  id          String   @id @default(cuid())
+  name        String
+  nameAr      String?
+  amount      Float
+  description String?
+  status      String   @default("active")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
