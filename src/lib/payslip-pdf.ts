@@ -1,7 +1,7 @@
-// Premium 2026 Payslip PDF Generator — Elite Development design
+// Premium 2026 Payslip PDF Generator — Elite Development design (EXACT clone)
 // Uses html2canvas-pro to capture the browser-rendered HTML payslip (which supports
 // Arabic perfectly via the browser's font/text engine) and embeds it as an image
-// in a jsPDF A4 document. This guarantees Arabic renders correctly.
+// in a jsPDF A4 document.
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas-pro'
 
@@ -77,25 +77,43 @@ export async function generatePayslipPDFDownload(data: any): Promise<void> {
   }
 }
 
-const PENALTY_LABELS: Record<string, { en: string; ar: string }> = {
-  acceptance: { en: 'Acceptance Penalty', ar: 'غرامة معدل القبول' },
-  contact: { en: 'Contact Penalty', ar: 'غرامة معدل التواصل' },
-  stacking: { en: 'Stacking Deduction', ar: 'خصم الطلبات المتعددة' },
-  declined: { en: 'Declined Penalty', ar: 'غرامة الرفض' },
-  late: { en: 'Late Penalty', ar: 'غرامة التأخير' },
-  noshow: { en: 'No-Show Penalty', ar: 'غرامة عدم الحضور' },
-  noshow_special: { en: 'No-Show Special Cities', ar: 'غرامة عدم الحضور للمدن الخاصة' },
-  daily_acceptance: { en: 'Daily Acceptance Penalty', ar: 'غرامة معدل القبول اليومي' },
-  missed_days: { en: 'Missed Days Penalty', ar: 'غرامة الأيام المفقودة' },
-  rider_balance: { en: 'Rider Balance Deduction', ar: 'خصم رصيد المندوب' },
-  car_deduction: { en: 'Car Deduction', ar: 'خصم السيارة' },
-  tga_deduction: { en: 'TGA Deduction', ar: 'خصم TGA' },
+// Exact colors from reference PDF
+const BLUE = '#1e3a8a'     // Earnings / blue side of gradient
+const ORANGE = '#ea580c'   // Deductions / orange side of gradient
+const LIGHT_BG = '#f8fafc' // Total row background
+
+// Format number with thousand separators and 2 decimals — matches reference "1,998.00"
+function fmt(n: number): string {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Build the payslip HTML string — Elite Development design, fills exactly one A4 page
+// Helper: build a deduction row — always shown, even when 0.00
+function deductionRow(ar: string, en: string, amount: number): string {
+  return `
+    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid #f3f4f6;">
+      <div>
+        <div style="font-size: 11px; color: #374151; font-weight: 500;" dir="rtl">${ar}</div>
+        <div style="font-size: 9px; color: #9ca3af;">${en}</div>
+      </div>
+      <span style="font-size: 12px; font-weight: 700; color: ${ORANGE}; font-variant-numeric: tabular-nums;">– ${fmt(amount)} SAR</span>
+    </div>`
+}
+
+// Helper: build an earnings row
+function earningsRow(ar: string, en: string, amount: number, sign: '' | '+' = ''): string {
+  return `
+    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f3f4f6;">
+      <div>
+        <div style="font-size: 11px; color: #374151; font-weight: 500;" dir="rtl">${ar}</div>
+        <div style="font-size: 9px; color: #9ca3af;">${en}</div>
+      </div>
+      <span style="font-size: 12px; font-weight: 700; color: ${BLUE}; font-variant-numeric: tabular-nums;">${sign} ${fmt(amount)} SAR</span>
+    </div>`
+}
+
+// Build the payslip HTML string — EXACT clone of Elite Development reference
 function buildPayslipHTML(data: any): string {
   const { result, driver, company, traffic, penalties } = data
-  const penaltyEntries = Object.entries(penalties).filter(([_, v]) => (v as number) > 0)
   const totalDeductions = result.totalOtherPenalties + result.trafficViolationsDeduction + result.missingOrderDeduction
   const attainmentPct = result.selectedTargetThreshold > 0
     ? ((result.completedOrders / result.selectedTargetThreshold) * 100).toFixed(1)
@@ -104,206 +122,185 @@ function buildPayslipHTML(data: any): string {
   // Salary per order rate
   const salaryPerOrder = result.appliedSalaryPerOrder || (result.appliedBaseSalary / result.appliedMonthlyTarget) || 0
 
-  // ===== Earnings rows =====
-  const earningsRows: string[] = []
-  // Base earnings = Target × Per-Order rate
-  earningsRows.push(`
-    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f3f4f6;">
-      <div>
-        <div style="font-size: 11px; color: #374151; font-weight: 500;">الراتب الأساسي</div>
-        <div style="font-size: 9px; color: #9ca3af;">Base Salary (${result.selectedTargetThreshold.toFixed(0)} × ${salaryPerOrder.toFixed(2)})</div>
-      </div>
-      <span style="font-size: 12px; font-weight: 700; color: #0A3D62; font-variant-numeric: tabular-nums;">${result.baseSalaryEquivalent.toFixed(2)} SAR</span>
-    </div>`)
-  if (result.bonusAmount > 0) {
-    earningsRows.push(`
-      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f3f4f6;">
-        <div>
-          <div style="font-size: 11px; color: #374151; font-weight: 500;">مكافأة الطلبات الإضافية</div>
-          <div style="font-size: 9px; color: #9ca3af;">Bonus (${result.extraOrders} × ${result.appliedBonusPerExtra.toFixed(2)})</div>
-        </div>
-        <span style="font-size: 12px; font-weight: 700; color: #0A3D62; font-variant-numeric: tabular-nums;">+ ${result.bonusAmount.toFixed(2)} SAR</span>
-      </div>`)
-  }
-  if ((result.segmentPayment || 0) > 0) {
-    earningsRows.push(`
-      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f3f4f6;">
-        <div>
-          <div style="font-size: 11px; color: #374151; font-weight: 500;">دفعة الشريحة</div>
-          <div style="font-size: 9px; color: #9ca3af;">Segment Payment</div>
-        </div>
-        <span style="font-size: 12px; font-weight: 700; color: #0A3D62; font-variant-numeric: tabular-nums;">+ ${result.segmentPayment.toFixed(2)} SAR</span>
-      </div>`)
-  }
-  for (const cb of (data.customBonuses || [])) {
-    earningsRows.push(`
-      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f3f4f6;">
-        <div>
-          <div style="font-size: 11px; color: #374151; font-weight: 500;">${cb.nameAr || cb.name}</div>
-          <div style="font-size: 9px; color: #9ca3af;">${cb.name}</div>
-        </div>
-        <span style="font-size: 12px; font-weight: 700; color: #0A3D62; font-variant-numeric: tabular-nums;">+ ${cb.amount.toFixed(2)} SAR</span>
-      </div>`)
-  }
-  // Gross total
-  earningsRows.push(`
-    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0 0; margin-top: 4px; border-top: 2px solid #0A3D62;">
-      <div>
-        <div style="font-size: 13px; color: #0A3D62; font-weight: 700;">الإجمالي</div>
-        <div style="font-size: 10px; color: #6b7280;">Gross</div>
-      </div>
-      <span style="font-size: 16px; font-weight: 800; color: #0A3D62; font-variant-numeric: tabular-nums;">${result.grossSalaryBeforePenalties.toFixed(2)} SAR</span>
-    </div>`)
+  // Penalties from JSON — extract specific ones (others ignored)
+  const p = penalties || {}
+  const stacking = Math.abs(p.stacking || 0)
+  const declined = Math.abs(p.declined || 0)
+  const late = Math.abs(p.late || 0)
+  const noshow = Math.abs(p.noshow || 0)
+  const missedDays = Math.abs(p.missed_days || 0)
+  const riderBalance = Math.abs(p.rider_balance || 0)
 
-  // ===== Deductions rows =====
+  // ===== Earnings rows (3 items + total) =====
+  const earningsRows: string[] = []
+  // 1. Order Earnings = Expected Orders × Price
+  earningsRows.push(earningsRow(
+    'إجمالي الأرباح من الطلبات',
+    `Order Earnings (${result.selectedTargetThreshold.toFixed(0)} × ${salaryPerOrder.toFixed(2)})`,
+    result.baseSalaryEquivalent
+  ))
+  // 2. Bonus (Extra Orders)
+  if (result.bonusAmount > 0) {
+    earningsRows.push(earningsRow(
+      'العمولة الإضافية',
+      `Bonus (Extra Orders: ${result.extraOrders} × ${result.appliedBonusPerExtra.toFixed(2)})`,
+      result.bonusAmount,
+      '+'
+    ))
+  }
+  // 3. Segment Payment
+  if ((result.segmentPayment || 0) > 0) {
+    earningsRows.push(earningsRow(
+      'دفعة الشريحة',
+      'Segment Payment',
+      result.segmentPayment,
+      '+'
+    ))
+  }
+  // 4. Custom bonuses
+  for (const cb of (data.customBonuses || [])) {
+    earningsRows.push(earningsRow(
+      cb.nameAr || cb.name,
+      cb.name,
+      cb.amount,
+      '+'
+    ))
+  }
+
+  // ===== Deductions rows — ALL ALWAYS SHOWN (matching reference) =====
   const deductionRows: string[] = []
-  if (result.missingOrderDeduction > 0) {
-    deductionRows.push(`
-      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid #f3f4f6;">
-        <div>
-          <div style="font-size: 11px; color: #374151; font-weight: 500;">خصم الطلبات المفقودة</div>
-          <div style="font-size: 9px; color: #9ca3af;">Missing-Order Deduction</div>
-        </div>
-        <span style="font-size: 12px; font-weight: 700; color: #FF6B35; font-variant-numeric: tabular-nums;">– ${result.missingOrderDeduction.toFixed(2)} SAR</span>
-      </div>`)
-  }
-  for (const [key, val] of penaltyEntries) {
-    const lbl = PENALTY_LABELS[key] ?? { en: key, ar: key }
-    deductionRows.push(`
-      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid #f3f4f6;">
-        <div>
-          <div style="font-size: 11px; color: #374151; font-weight: 500;">${lbl.ar}</div>
-          <div style="font-size: 9px; color: #9ca3af;">${lbl.en}</div>
-        </div>
-        <span style="font-size: 12px; font-weight: 700; color: #FF6B35; font-variant-numeric: tabular-nums;">– ${(val as number).toFixed(2)} SAR</span>
-      </div>`)
-  }
+  // 1. Missing-Order Deduction
+  deductionRows.push(deductionRow('خصم الطلبات المفقودة', 'Missing-Order Deduction', result.missingOrderDeduction))
+  // 2. Stacking Deduction
+  deductionRows.push(deductionRow('خصم التجميع', 'Stacking Deduction', stacking))
+  // 3. Declined Penalties
+  deductionRows.push(deductionRow('الغرامات المرفوضة', 'Declined Penalties', declined))
+  // 4. Late Penalty
+  deductionRows.push(deductionRow('غرامة التأخير', 'Late Penalty', late))
+  // 5. No-Show Penalty
+  deductionRows.push(deductionRow('غرامة عدم الحضور', 'No-Show Penalty', noshow))
+  // 6. Missed-Days Penalty
+  deductionRows.push(deductionRow('غرامة الأيام المفقودة', 'Missed-Days Penalty', missedDays))
+  // 7. Rider Balance Deduction
+  deductionRows.push(deductionRow('خصم رصيد السائق', 'Rider Balance Deduction', riderBalance))
+  // 8. Traffic Violations (if any)
   if (result.trafficViolationsDeduction > 0) {
-    deductionRows.push(`
-      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid #f3f4f6;">
-        <div>
-          <div style="font-size: 11px; color: #374151; font-weight: 500;">المخالفات المرورية</div>
-          <div style="font-size: 9px; color: #9ca3af;">Traffic Violations</div>
-        </div>
-        <span style="font-size: 12px; font-weight: 700; color: #FF6B35; font-variant-numeric: tabular-nums;">– ${result.trafficViolationsDeduction.toFixed(2)} SAR</span>
-      </div>`)
+    deductionRows.push(deductionRow('المخالفات المرورية', 'Traffic Violations', result.trafficViolationsDeduction))
   }
+  // 9. Custom deductions
   for (const cd of (data.customDeductions || [])) {
-    deductionRows.push(`
-      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid #f3f4f6;">
-        <div>
-          <div style="font-size: 11px; color: #374151; font-weight: 500;">${cd.nameAr || cd.name}</div>
-          <div style="font-size: 9px; color: #9ca3af;">${cd.name}</div>
-        </div>
-        <span style="font-size: 12px; font-weight: 700; color: #FF6B35; font-variant-numeric: tabular-nums;">– ${cd.amount.toFixed(2)} SAR</span>
-      </div>`)
+    deductionRows.push(deductionRow(cd.nameAr || cd.name, cd.name, cd.amount))
   }
-  if (deductionRows.length === 0) {
-    deductionRows.push(`<div style="padding: 10px 0; text-align: center; color: #9ca3af; font-size: 10px;">لا توجد خصومات · No deductions applied</div>`)
-  }
-  // Total deductions row
-  deductionRows.push(`
-    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0 0; margin-top: 4px; border-top: 2px solid #FF6B35;">
-      <div>
-        <div style="font-size: 13px; color: #FF6B35; font-weight: 700;">إجمالي الخصومات</div>
-        <div style="font-size: 10px; color: #6b7280;">Total Deductions</div>
-      </div>
-      <span style="font-size: 16px; font-weight: 800; color: #FF6B35; font-variant-numeric: tabular-nums;">${totalDeductions.toFixed(2)} SAR</span>
-    </div>`)
 
   return `
-<div style="background: #ffffff; color: #000000; width: 800px; height: 1131px; box-sizing: border-box; font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif; display: flex; flex-direction: column; overflow: hidden; padding: 24px;">
+<div style="background: #ffffff; color: #000000; width: 800px; height: 1131px; box-sizing: border-box; font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif; display: flex; flex-direction: column; overflow: hidden; padding: 22px;">
 
-  <!-- ===== Header — blue → orange gradient ===== -->
-  <div style="background: linear-gradient(90deg, #0A3D62 0%, #0A3D62 35%, #FF6B35 100%); color: #ffffff; border-radius: 12px; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(10, 61, 98, 0.18); flex-shrink: 0;">
+  <!-- ===== HEADER — blue 60% → orange 40% gradient ===== -->
+  <div style="background: linear-gradient(90deg, ${BLUE} 0%, ${BLUE} 60%, ${ORANGE} 100%); color: #ffffff; border-radius: 10px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 3px 10px rgba(30, 58, 138, 0.2); flex-shrink: 0;">
     <!-- Left: Logo + Company info -->
-    <div style="display: flex; align-items: center; gap: 14px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
       ${company?.logo
-        ? `<img src="${company.logo}" alt="Logo" style="height: 48px; width: 48px; object-fit: contain; background: white; padding: 4px; border-radius: 50%; border: 2px solid #FF6B35;" crossorigin="anonymous"/>`
-        : `<div style="height: 48px; width: 48px; background: white; border-radius: 50%; border: 2px solid #FF6B35; display: flex; align-items: center; justify-content: center; color: #0A3D62; font-weight: 800; font-size: 18px;">${(company?.name || 'E').charAt(0)}</div>`
+        ? `<img src="${company.logo}" alt="Logo" style="height: 44px; width: 44px; object-fit: contain; background: white; padding: 3px; border-radius: 50%; border: 2px solid ${ORANGE};" crossorigin="anonymous"/>`
+        : `<div style="height: 44px; width: 44px; background: white; border-radius: 50%; border: 2px solid ${ORANGE}; display: flex; align-items: center; justify-content: center; color: ${BLUE}; font-weight: 800; font-size: 16px;">${(company?.name || 'N').charAt(0)}</div>`
       }
       <div>
-        <div style="font-size: 15px; font-weight: 700;" dir="rtl">${company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</div>
-        <div style="font-size: 13px; font-weight: 600;">${company?.name || 'Nokhaba Tatweer for Trading'}</div>
-        <div style="font-size: 9px; opacity: 0.9; margin-top: 2px;">VAT: ${company?.vatNumber || 'N/A'} · ${company?.address || 'Riyadh, KSA'}</div>
+        <div style="font-size: 14px; font-weight: 700;" dir="rtl">${company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</div>
+        <div style="font-size: 12px; font-weight: 600;">${company?.name || 'Nokhaba Tatweer for Trading'}</div>
+        <div style="font-size: 9px; opacity: 0.9; margin-top: 1px;">VAT: ${company?.vatNumber || 'N/A'} · ${company?.address || 'Riyadh, KSA'}</div>
       </div>
     </div>
     <!-- Right: Payslip title -->
     <div style="text-align: right;">
-      <div style="font-size: 18px; font-weight: 700;" dir="rtl">بيان المرتب</div>
-      <div style="font-size: 14px; font-weight: 700; color: #FFEEC2;">PAYSLIP</div>
-      <div style="font-size: 11px; opacity: 0.95; margin-top: 2px;">${result.payrollMonth}</div>
+      <div style="font-size: 16px; font-weight: 700;" dir="rtl">بيان المرتب</div>
+      <div style="font-size: 13px; font-weight: 700; color: #FFEEC2;">PAYSLIP</div>
+      <div style="font-size: 10px; opacity: 0.95; margin-top: 2px;">${result.payrollMonth}</div>
     </div>
   </div>
 
   <!-- ===== Driver Info Card — 2 rows × 3 cols ===== -->
-  <div style="margin-top: 12px; background: white; border: 1px solid #E0E0E0; border-radius: 10px; padding: 12px 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); flex-shrink: 0;">
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; row-gap: 10px;">
+  <div style="margin-top: 10px; background: white; border: 1px solid #E0E0E0; border-radius: 8px; padding: 10px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); flex-shrink: 0;">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; row-gap: 8px;">
       ${[
-        { ar: 'اسم المستفيد', en: 'Beneficiary', val: driver?.beneficiaryName || result.driverName },
-        { ar: 'معرف المندوب', en: 'Rider ID', val: result.riderId },
-        { ar: 'العقد', en: 'Contract', val: result.contractName },
-        { ar: 'البنك', en: 'Bank', val: driver?.bankName || '—' },
-        { ar: 'الآيبان', en: 'IBAN', val: driver?.iban || '—' },
-        { ar: 'نوع المركبة', en: 'Vehicle', val: result.vehicleType },
+        { ar: 'اسم المستفيد', en: 'Beneficiary', val: driver?.beneficiaryName || result.driverName, mono: false },
+        { ar: 'معرف المندوب', en: 'Rider ID', val: result.riderId, mono: true },
+        { ar: 'العقد', en: 'Contract', val: result.contractName, mono: true },
+        { ar: 'نوع المركبة', en: 'Vehicle', val: result.vehicleType, mono: false },
+        { ar: 'البنك', en: 'Bank', val: driver?.bankName || '—', mono: false },
+        { ar: 'الآيبان', en: 'IBAN', val: driver?.iban || '—', mono: true },
       ].map(f => `
         <div>
           <div style="font-size: 11px; color: #666666; font-weight: 500;" dir="rtl">${f.ar}</div>
           <div style="font-size: 9px; color: #9ca3af;">${f.en}</div>
-          <div style="font-size: 13px; font-weight: 700; color: #111111; margin-top: 2px; word-break: break-all; ${f.en === 'IBAN' || f.en === 'Rider ID' || f.en === 'Contract' ? 'font-family: monospace; font-size: 11px;' : ''}">${f.val}</div>
+          <div style="font-size: 13px; font-weight: 700; color: #111111; margin-top: 1px; word-break: break-all; ${f.mono ? 'font-family: monospace; font-size: 11px;' : ''}">${f.val}</div>
         </div>
       `).join('')}
     </div>
   </div>
 
-  <!-- ===== Stats Section — 6 cards ===== -->
-  <div style="margin-top: 10px; background: white; border: 1px solid #E0E0E0; border-radius: 10px; padding: 12px 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); flex-shrink: 0;">
-    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;">
+  <!-- ===== Stats Section — 1 row of 6 cells, accent bar UNDER each ===== -->
+  <div style="margin-top: 8px; background: white; border: 1px solid #E0E0E0; border-radius: 8px; padding: 10px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); flex-shrink: 0;">
+    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;">
       ${[
-        { ar: 'أيام العمل', en: 'Working Days', val: result.actualWorkingDays.toFixed(0), color: '#0A3D62' },
-        { ar: 'الطلبات المكتملة', en: 'Completed', val: result.completedOrders, color: '#0A3D62' },
-        { ar: 'الطلبات المتوقعة', en: 'Target', val: result.selectedTargetThreshold.toFixed(0), color: '#666666' },
-        { ar: 'سعر الطلب', en: 'Per Order', val: salaryPerOrder.toFixed(2), color: '#0A3D62' },
+        { ar: 'أيام العمل', en: 'Working Days', val: result.actualWorkingDays.toFixed(0), color: BLUE },
+        { ar: 'الطلبات المكتملة', en: 'Completed', val: result.completedOrders, color: BLUE },
+        { ar: 'الطلبات المتوقعة', en: 'Expected', val: result.selectedTargetThreshold.toFixed(0), color: '#666666' },
+        { ar: 'سعر الطلب', en: 'Order Price', val: salaryPerOrder.toFixed(2), color: BLUE },
         { ar: 'طلبات إضافية', en: 'Extra', val: result.extraOrders, color: '#059669' },
         { ar: 'طلبات مفقودة', en: 'Missing', val: result.missingOrders, color: '#dc2626' },
       ].map(s => `
-        <div style="text-align: center; padding: 6px 4px; background: #F8FAFC; border-radius: 6px; border-bottom: 2px solid ${s.color};">
+        <div style="text-align: center; padding: 5px 3px; background: ${LIGHT_BG}; border-radius: 5px; border-bottom: 3px solid ${s.color};">
           <div style="font-size: 9px; color: #666666; font-weight: 600;" dir="rtl">${s.ar}</div>
           <div style="font-size: 8px; color: #9ca3af;">${s.en}</div>
-          <div style="font-size: 16px; font-weight: 800; color: ${s.color}; margin-top: 3px; font-variant-numeric: tabular-nums;">${s.val}</div>
+          <div style="font-size: 15px; font-weight: 800; color: ${s.color}; margin-top: 2px; font-variant-numeric: tabular-nums;">${s.val}</div>
         </div>
       `).join('')}
     </div>
   </div>
 
   <!-- ===== Earnings + Deductions side-by-side ===== -->
-  <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; min-height: 0;">
+  <div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1; min-height: 0;">
     <!-- Earnings Card (blue) -->
-    <div style="background: white; border: 1px solid #E0E0E0; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; flex-direction: column;">
-      <div style="padding: 8px 14px; background: #0A3D62; color: white; display: flex; justify-content: space-between; align-items: center;">
+    <div style="background: white; border: 1px solid #E0E0E0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column;">
+      <div style="padding: 7px 12px; background: ${BLUE}; color: white; display: flex; justify-content: space-between; align-items: center;">
         <div style="font-size: 12px; font-weight: 700; letter-spacing: 1px;">EARNINGS</div>
         <div style="font-size: 11px; font-weight: 600;" dir="rtl">الأرباح</div>
       </div>
-      <div style="padding: 8px 14px; flex: 1;">
+      <div style="padding: 8px 12px; flex: 1;">
         ${earningsRows.join('')}
+        <!-- Gross Total Row -->
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 8px 12px; margin: 6px -12px 0; background: ${LIGHT_BG}; border-top: 2px solid ${BLUE};">
+          <div>
+            <div style="font-size: 13px; color: ${BLUE}; font-weight: 700;" dir="rtl">الإجمالي</div>
+            <div style="font-size: 10px; color: #6b7280;">Gross</div>
+          </div>
+          <span style="font-size: 15px; font-weight: 800; color: ${BLUE}; font-variant-numeric: tabular-nums;">${fmt(result.grossSalaryBeforePenalties)} SAR</span>
+        </div>
       </div>
     </div>
     <!-- Deductions Card (orange) -->
-    <div style="background: white; border: 1px solid #E0E0E0; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); display: flex; flex-direction: column;">
-      <div style="padding: 8px 14px; background: #FF6B35; color: white; display: flex; justify-content: space-between; align-items: center;">
+    <div style="background: white; border: 1px solid #E0E0E0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column;">
+      <div style="padding: 7px 12px; background: ${ORANGE}; color: white; display: flex; justify-content: space-between; align-items: center;">
         <div style="font-size: 12px; font-weight: 700; letter-spacing: 1px;">DEDUCTIONS</div>
         <div style="font-size: 11px; font-weight: 600;" dir="rtl">الخصومات</div>
       </div>
-      <div style="padding: 8px 14px; flex: 1;">
+      <div style="padding: 8px 12px; flex: 1;">
         ${deductionRows.join('')}
+        <!-- Total Deductions Row -->
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 8px 12px; margin: 6px -12px 0; background: ${LIGHT_BG}; border-top: 2px solid ${ORANGE};">
+          <div>
+            <div style="font-size: 13px; color: ${ORANGE}; font-weight: 700;" dir="rtl">إجمالي الخصومات</div>
+            <div style="font-size: 10px; color: #6b7280;">Total Deductions</div>
+          </div>
+          <span style="font-size: 15px; font-weight: 800; color: ${ORANGE}; font-variant-numeric: tabular-nums;">${fmt(totalDeductions)} SAR</span>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- ===== Traffic Detail (if any) — compact, optional ===== -->
   ${traffic && traffic.length > 0 ? `
-    <div style="margin-top: 10px; background: white; border: 1px solid #E0E0E0; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04); flex-shrink: 0;">
-      <div style="padding: 6px 14px; background: #FEF3E2; border-bottom: 2px solid #FF6B35; display: flex; justify-content: space-between; align-items: center;">
+    <div style="margin-top: 8px; background: white; border: 1px solid #E0E0E0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); flex-shrink: 0;">
+      <div style="padding: 5px 12px; background: #FEF3E2; border-bottom: 2px solid ${ORANGE}; display: flex; justify-content: space-between; align-items: center;">
         <div style="font-size: 11px; font-weight: 700; color: #92400e; letter-spacing: 0.5px;">TRAFFIC TICKETS</div>
         <div style="font-size: 11px; color: #92400e; font-weight: 600;" dir="rtl">تفاصيل المخالفات</div>
       </div>
@@ -330,26 +327,26 @@ function buildPayslipHTML(data: any): string {
     </div>
   ` : ''}
 
-  <!-- ===== Net Payable Salary — full-width gradient bar ===== -->
-  <div style="margin-top: 12px; background: linear-gradient(90deg, #0A3D62 0%, #0A3D62 35%, #FF6B35 100%); border-radius: 12px; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 14px rgba(10, 61, 98, 0.25); flex-shrink: 0;">
+  <!-- ===== Net Payable Salary — same gradient as header ===== -->
+  <div style="margin-top: 10px; background: linear-gradient(90deg, ${BLUE} 0%, ${BLUE} 60%, ${ORANGE} 100%); border-radius: 10px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 3px 12px rgba(30, 58, 138, 0.25); flex-shrink: 0;">
     <div>
-      <div style="font-size: 14px; font-weight: 700; color: white;" dir="rtl">المرتب الصافي المستحق</div>
-      <div style="font-size: 11px; color: #FFEEC2; margin-top: 2px;">NET PAYABLE SALARY · ${result.payrollMonth}</div>
-      <div style="font-size: 9px; color: rgba(255,255,255,0.75); margin-top: 4px;">Generated: ${new Date().toLocaleDateString('en-GB')} · Attainment: ${attainmentPct}%</div>
+      <div style="font-size: 14px; font-weight: 700; color: white;" dir="rtl">الراتب الصافي المستحق</div>
+      <div style="font-size: 11px; color: #FFEEC2; margin-top: 1px;">Net Payable Salary · ${result.payrollMonth}</div>
+      <div style="font-size: 9px; color: rgba(255,255,255,0.75); margin-top: 3px;">Generated: ${new Date().toLocaleDateString('en-GB')} · Attainment: ${attainmentPct}%</div>
     </div>
     <div style="text-align: right;">
-      <div style="font-size: 28px; font-weight: 800; color: white; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; line-height: 1;">${result.finalNetSalary.toFixed(2)}</div>
-      <div style="font-size: 13px; color: #FFEEC2; font-weight: 600; margin-top: 2px;">SAR</div>
+      <div style="font-size: 26px; font-weight: 800; color: white; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; line-height: 1;">${fmt(result.finalNetSalary)}</div>
+      <div style="font-size: 12px; color: #FFEEC2; font-weight: 600; margin-top: 2px;">SAR</div>
     </div>
   </div>
 
   <!-- ===== Signature Section — 3 columns: Mgr | Stamp | Driver ===== -->
-  <div style="margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; align-items: flex-end; flex-shrink: 0;">
+  <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: flex-end; flex-shrink: 0;">
     <!-- Accounting Manager -->
     <div style="text-align: center;">
       ${company?.signatureImg
-        ? `<div style="height: 36px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px;"><img src="${company.signatureImg}" alt="Acc Mgr" style="max-height: 34px; object-fit: contain;" crossorigin="anonymous"/></div>`
-        : `<div style="height: 36px; border-bottom: 1.5px solid #0A3D62; margin-bottom: 4px;"></div>`
+        ? `<div style="height: 34px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 3px;"><img src="${company.signatureImg}" alt="Acc Mgr" style="max-height: 32px; object-fit: contain;" crossorigin="anonymous"/></div>`
+        : `<div style="height: 34px; border-bottom: 1.5px solid ${BLUE}; margin-bottom: 3px;"></div>`
       }
       <div style="font-size: 10px; color: #666666; font-weight: 600;">ACCOUNTING MANAGER</div>
       <div style="font-size: 10px; color: #666666;" dir="rtl">مدير الحسابات</div>
@@ -357,9 +354,9 @@ function buildPayslipHTML(data: any): string {
     <!-- Center Stamp -->
     <div style="text-align: center;">
       ${company?.stampImg
-        ? `<div style="height: 56px; display: flex; align-items: center; justify-content: center; margin-bottom: 4px;"><img src="${company.stampImg}" alt="Stamp" style="max-height: 56px; object-fit: contain;" crossorigin="anonymous"/></div>`
-        : `<div style="height: 56px; width: 56px; margin: 0 auto 4px; border: 2px dashed #FF6B35; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column; color: #FF6B35;">
-            <div style="font-size: 9px; font-weight: 700;">${(company?.name || 'ELITE').slice(0, 8)}</div>
+        ? `<div style="height: 54px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px;"><img src="${company.stampImg}" alt="Stamp" style="max-height: 54px; object-fit: contain;" crossorigin="anonymous"/></div>`
+        : `<div style="height: 54px; width: 54px; margin: 0 auto 3px; border: 2px dashed ${ORANGE}; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column; color: ${ORANGE};">
+            <div style="font-size: 8px; font-weight: 700;">${(company?.name || 'NT').slice(0, 6)}</div>
             <div style="font-size: 7px;">KSA</div>
           </div>`
       }
@@ -368,8 +365,8 @@ function buildPayslipHTML(data: any): string {
     <!-- Rider Signature -->
     <div style="text-align: center;">
       ${company?.riderSignatureImg
-        ? `<div style="height: 36px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px;"><img src="${company.riderSignatureImg}" alt="Driver" style="max-height: 34px; object-fit: contain;" crossorigin="anonymous"/></div>`
-        : `<div style="height: 36px; border-bottom: 1.5px solid #0A3D62; margin-bottom: 4px;"></div>`
+        ? `<div style="height: 34px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 3px;"><img src="${company.riderSignatureImg}" alt="Driver" style="max-height: 32px; object-fit: contain;" crossorigin="anonymous"/></div>`
+        : `<div style="height: 34px; border-bottom: 1.5px solid ${BLUE}; margin-bottom: 3px;"></div>`
       }
       <div style="font-size: 10px; color: #666666; font-weight: 600;">RIDER SIGNATURE</div>
       <div style="font-size: 10px; color: #666666;" dir="rtl">توقيع السائق</div>
@@ -377,7 +374,7 @@ function buildPayslipHTML(data: any): string {
   </div>
 
   <!-- ===== Footer ===== -->
-  <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #E0E0E0; display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #9ca3af; flex-shrink: 0;">
+  <div style="margin-top: 10px; padding-top: 6px; border-top: 1px solid #E0E0E0; display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #9ca3af; flex-shrink: 0;">
     <div>${company?.name || 'Nokhaba Tatweer for Trading'} — <span dir="rtl">${company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</span></div>
     <div>Generated ${new Date().toLocaleDateString('en-GB')} · ${company?.footerNote || 'Computer-generated payslip'}</div>
   </div>

@@ -55,3 +55,40 @@ Stage Summary:
 - All info fits on one A4 page with no whitespace
 - Modern design: gradient header, color-coded cards (blue=earnings, orange=deductions), prominent net salary hero
 - Stamp area uses company.stampImg if available, falls back to dashed orange circle with company initial
+
+---
+Task ID: clone-payslip-exact
+Agent: main
+Task: Clone the Elite Development payslip design EXACTLY — pixel-perfect match
+
+Work Log:
+- Re-analyzed the reference PDF with VLM at 200 DPI for exact pixel-by-pixel details
+- Extracted EXACT colors: Earnings header=#1e3a8a, Deductions header=#ea580c, Total row bg=#f8fafc
+- Confirmed header gradient: blue 60% → orange 40% (left to right)
+- Confirmed stats layout: ONE row of 6 cells with accent bar UNDER each cell
+- Confirmed SAR placement: AFTER number (e.g., "1,998.00 SAR")
+- Confirmed numbers use thousand separators (e.g., "1,998.00")
+- Confirmed ALL deductions shown even with 0.00 value
+- Identified EXACT Arabic labels from reference:
+  * "إجمالي الأرباح من الطلبات" (Order Earnings) — was "الراتب الأساسي"
+  * "العمولة الإضافية" (Bonus) — was "مكافأة الطلبات الإضافية"
+  * "خصم التجميع" (Stacking) — was "خصم الطلبات المتعددة"
+  * "الغرامات المرفوضة" (Declined) — was "غرامة الرفض"
+  * "خصم رصيد السائق" (Rider Balance) — was "خصم رصيد المندوب"
+- Identified EXACT deduction order from reference:
+  1. Missing-Order → 2. Stacking → 3. Declined → 4. Late → 5. No-Show → 6. Missed-Days → 7. Rider Balance
+- Rewrote src/lib/payslip-pdf.ts with EXACT colors, labels, order, formatting
+- Rewrote src/components/payroll/payslip-preview.tsx to mirror exactly
+- Added fmt() helper using toLocaleString() for thousand separators
+- Updated total rows: light bg (#f8fafc) instead of transparent/colored border
+- Updated net salary section: same gradient as header (blue 60% → orange 40%)
+- Updated header text: "بيان المرتب" (Arabic primary) + "PAYSLIP" (orange #FFEEC2)
+- Updated earnings row labels: include calculation hint in English subtitle
+
+Stage Summary:
+- Payslip now EXACTLY matches the Elite Development reference PDF
+- All Arabic labels match the reference word-for-word
+- All deduction items shown (even when 0.00) in the exact order from reference
+- Numbers formatted with thousand separators + SAR suffix
+- Color palette: blue #1e3a8a + orange #ea580c + light gray #f8fafc
+- Layout: header → driver info (2×3) → stats (1×6) → earnings/deductions side-by-side → net salary bar → signatures (3-col with stamp) → footer
