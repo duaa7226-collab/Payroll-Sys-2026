@@ -90,7 +90,7 @@ export async function generateOnePageSummaryPDF(
   const bandCounts: Record<string, number> = { top: 0, high: 0, average: 0, low: 0, bottom: 0 }
   for (const r of results) bandCounts[r.performanceBand] = (bandCounts[r.performanceBand] ?? 0) + 1
 
-  // Top 3 earners
+  // Top 3 earners (still used in the right column highlight)
   const topEarners = [...results].sort((a, b) => b.finalNetSalary - a.finalNetSalary).slice(0, 3)
   // Top 3 deductions
   const topDeductions = [...results].sort((a, b) =>
@@ -98,12 +98,15 @@ export async function generateOnePageSummaryPDF(
     (a.totalOtherPenalties + a.trafficViolationsDeduction + a.missingOrderDeduction)
   ).slice(0, 3)
 
+  // ALL riders sorted by net salary desc — for the expanded per-rider table
+  const allRidersSorted = [...results].sort((a, b) => b.finalNetSalary - a.finalNetSalary)
+
   const html = buildSummaryHTML({
     totalDrivers, totalCompletedOrders, totalTargetOrders, totalExtraOrders, totalMissingOrders,
     totalWorkingDays, totalWorkingHours, totalBaseSalary, totalBonus, totalSegment,
     totalMissingDeduction, totalGross, totalPenalties, totalTraffic, totalDeductions, totalNet,
-    penaltyEntries, bandCounts, topEarners, topDeductions,
-    payrollMonth, company, ruleSummary,
+    penaltyEntries, bandCounts, topEarners, topDeductions, allRidersSorted,
+    payrollMonth, company,
   })
 
   // Render in hidden container in MAIN document — Cairo font is already loaded here via next/font/google
@@ -150,25 +153,25 @@ function buildSummaryHTML(data: any): string {
     totalDrivers, totalCompletedOrders, totalTargetOrders, totalExtraOrders, totalMissingOrders,
     totalWorkingDays, totalWorkingHours, totalBaseSalary, totalBonus, totalSegment,
     totalMissingDeduction, totalGross, totalPenalties, totalTraffic, totalDeductions, totalNet,
-    penaltyEntries, bandCounts, topEarners, topDeductions,
-    payrollMonth, company, ruleSummary,
+    penaltyEntries, bandCounts, topEarners, topDeductions, allRidersSorted,
+    payrollMonth, company,
   } = data
 
   const attainmentPct = totalTargetOrders > 0 ? ((totalCompletedOrders / totalTargetOrders) * 100).toFixed(1) : '0'
 
   return `
-<div style="background: #ffffff; color: #000000; width: 800px; height: 1131px; box-sizing: border-box; font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif; position: relative; overflow: hidden;">
+<div style="background: #ffffff; color: #000000; width: 800px; height: 1131px; box-sizing: border-box; font-family: 'Cairo', 'IBM Plex Sans Arabic', Arial, sans-serif; position: relative; overflow: hidden; display: flex; flex-direction: column;">
 
   <!-- Header -->
-  <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 60%, #059669 100%); color: #ffffff; padding: 18px 32px; display: flex; justify-content: space-between; align-items: center;">
+  <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 60%, #059669 100%); color: #ffffff; padding: 14px 28px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
     <div style="flex: 1;">
-      <div style="font-size: 10px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.75; font-weight: 500;">Payroll Summary Report</div>
-      <div style="font-size: 11px; opacity: 0.85; margin-top: 1px;" dir="rtl">تقرير ملخص الرواتب</div>
-      <div style="font-size: 20px; font-weight: 700; margin-top: 3px; letter-spacing: -0.5px;">${company?.name || 'Nokhaba Tatweer for Trading'}</div>
-      <div style="font-size: 12px; opacity: 0.9; margin-top: 1px;" dir="rtl">${company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</div>
+      <div style="font-size: 9px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.75; font-weight: 500;">Payroll Summary Report</div>
+      <div style="font-size: 10px; opacity: 0.85; margin-top: 1px;" dir="rtl">تقرير ملخص الرواتب</div>
+      <div style="font-size: 19px; font-weight: 700; margin-top: 2px; letter-spacing: -0.5px;">${company?.name || 'Nokhaba Tatweer for Trading'}</div>
+      <div style="font-size: 11px; opacity: 0.9; margin-top: 1px;" dir="rtl">${company?.nameAr || 'مؤسسة نخبة التطوير للتجارة'}</div>
     </div>
     <div style="text-align: right;">
-      ${company?.logo ? `<div style="margin-bottom: 4px;"><img src="${company.logo}" alt="Logo" style="max-height: 40px; max-width: 90px; object-fit: contain; background: white; padding: 4px; border-radius: 6px;" crossorigin="anonymous"/></div>` : ''}
+      ${company?.logo ? `<div style="margin-bottom: 4px;"><img src="${company.logo}" alt="Logo" style="max-height: 38px; max-width: 88px; object-fit: contain; background: white; padding: 4px; border-radius: 6px;" crossorigin="anonymous"/></div>` : ''}
       <div style="background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.25);">
         <div style="font-size: 8px; opacity: 0.8; letter-spacing: 1.5px; text-transform: uppercase;">Pay Period</div>
         <div style="font-size: 14px; font-weight: 700;">${payrollMonth}</div>
@@ -177,7 +180,7 @@ function buildSummaryHTML(data: any): string {
   </div>
 
   <!-- KPI Strip — 6 cards -->
-  <div style="padding: 10px 32px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; background: #f9fafb; border-bottom: 2px solid #064e3b;">
+  <div style="padding: 8px 28px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; background: #f9fafb; border-bottom: 2px solid #064e3b; flex-shrink: 0;">
     ${[
       { label: 'Drivers', value: totalDrivers, color: '#064e3b' },
       { label: 'Total Orders', value: totalCompletedOrders, color: '#0891b2' },
@@ -186,47 +189,47 @@ function buildSummaryHTML(data: any): string {
       { label: 'Gross (SAR)', value: totalGross.toFixed(0), color: '#059669' },
       { label: 'Net (SAR)', value: totalNet.toFixed(0), color: '#dc2626' },
     ].map(k => `
-      <div style="text-align: center; padding: 6px 4px; background: white; border-radius: 6px; border: 1px solid #e5e7eb;">
+      <div style="text-align: center; padding: 5px 4px; background: white; border-radius: 6px; border: 1px solid #e5e7eb;">
         <div style="font-size: 7px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 600;">${k.label}</div>
-        <div style="font-size: 16px; font-weight: 800; color: ${k.color}; margin-top: 2px; font-variant-numeric: tabular-nums;">${k.value}</div>
+        <div style="font-size: 15px; font-weight: 800; color: ${k.color}; margin-top: 2px; font-variant-numeric: tabular-nums;">${k.value}</div>
       </div>
     `).join('')}
   </div>
 
   <!-- Body: Three columns -->
-  <div style="padding: 10px 32px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+  <div style="padding: 8px 28px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; flex-shrink: 0;">
 
     <!-- Column 1: Orders & Performance -->
-    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px;">
-      <div style="margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
+    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 7px 9px;">
+      <div style="margin-bottom: 4px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
         <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Orders & Performance</div>
-        <div style="font-size: 11px; color: #6b7280;" dir="rtl">الطلبات والأداء</div>
+        <div style="font-size: 10px; color: #6b7280;" dir="rtl">الطلبات والأداء</div>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+      <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Completed Orders</span>
         <span style="font-size: 10px; font-weight: 700; color: #111827;">${totalCompletedOrders}</span>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+      <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Target Orders</span>
         <span style="font-size: 10px; font-weight: 700; color: #6b7280;">${totalTargetOrders.toFixed(0)}</span>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+      <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Extra Orders</span>
         <span style="font-size: 10px; font-weight: 700; color: #059669;">+${totalExtraOrders}</span>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+      <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Missing Orders</span>
         <span style="font-size: 10px; font-weight: 700; color: #dc2626;">-${totalMissingOrders}</span>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+      <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Attainment %</span>
         <span style="font-size: 10px; font-weight: 700; color: #065f46;">${attainmentPct}%</span>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+      <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Working Hours</span>
         <span style="font-size: 10px; font-weight: 700; color: #111827;">${totalWorkingHours.toFixed(0)}</span>
       </div>
-      <div style="margin-top: 5px; padding-top: 3px; border-top: 1px solid #e5e7eb;">
+      <div style="margin-top: 4px; padding-top: 3px; border-top: 1px solid #e5e7eb;">
         <div style="font-size: 8px; color: #6b7280; margin-bottom: 3px;">Performance Bands:</div>
         ${Object.entries(bandCounts).filter(([_, v]) => v > 0).map(([band, count]) => `
           <div style="display: flex; justify-content: space-between; padding: 1px 0;">
@@ -238,36 +241,36 @@ function buildSummaryHTML(data: any): string {
     </div>
 
     <!-- Column 2: Earnings Breakdown -->
-    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px;">
-      <div style="margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
+    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 7px 9px;">
+      <div style="margin-bottom: 4px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
         <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Earnings</div>
-        <div style="font-size: 11px; color: #6b7280;" dir="rtl">الأرباح</div>
+        <div style="font-size: 10px; color: #6b7280;" dir="rtl">الأرباح</div>
       </div>
-      <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+      <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
         <span style="font-size: 9px; color: #374151;">Base Salary</span>
         <span style="font-size: 10px; font-weight: 700; color: #111827;">SAR ${totalBaseSalary.toFixed(2)}</span>
       </div>
       ${totalBonus > 0 ? `
-        <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+        <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
           <span style="font-size: 9px; color: #374151;">Performance Bonus</span>
           <span style="font-size: 10px; font-weight: 700; color: #059669;">+SAR ${totalBonus.toFixed(2)}</span>
         </div>
       ` : ''}
       ${totalSegment > 0 ? `
-        <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+        <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
           <span style="font-size: 9px; color: #374151;">Segment Payment</span>
           <span style="font-size: 10px; font-weight: 700; color: #0891b2;">+SAR ${totalSegment.toFixed(2)}</span>
         </div>
       ` : ''}
-      <div style="margin-top: 5px; padding-top: 3px; border-top: 2px solid #064e3b; display: flex; justify-content: space-between;">
+      <div style="margin-top: 4px; padding-top: 3px; border-top: 2px solid #064e3b; display: flex; justify-content: space-between;">
         <span style="font-size: 10px; font-weight: 700; color: #064e3b;">Total Gross</span>
         <span style="font-size: 12px; font-weight: 800; color: #064e3b;">SAR ${totalGross.toFixed(2)}</span>
       </div>
 
       <!-- Deductions breakdown -->
-      <div style="margin-top: 8px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid #b91c1c;">
+      <div style="margin-top: 6px; margin-bottom: 3px; padding-bottom: 2px; border-bottom: 2px solid #b91c1c;">
         <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #b91c1c; text-transform: uppercase;">Deductions</div>
-        <div style="font-size: 11px; color: #6b7280;" dir="rtl">الخصومات</div>
+        <div style="font-size: 10px; color: #6b7280;" dir="rtl">الخصومات</div>
       </div>
       ${totalMissingDeduction > 0 ? `
         <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
@@ -292,13 +295,13 @@ function buildSummaryHTML(data: any): string {
     </div>
 
     <!-- Column 3: Top Earners & Top Deductions -->
-    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px;">
-      <div style="margin-bottom: 5px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
+    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 7px 9px;">
+      <div style="margin-bottom: 4px; padding-bottom: 3px; border-bottom: 2px solid #064e3b;">
         <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Top Earners</div>
-        <div style="font-size: 11px; color: #6b7280;" dir="rtl">أعلى الرواتب</div>
+        <div style="font-size: 10px; color: #6b7280;" dir="rtl">أعلى الرواتب</div>
       </div>
       ${topEarners.map((r: any, i: number) => `
-        <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+        <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
           <div>
             <span style="font-size: 9px; font-weight: 700; color: #111827;">${i + 1}. ${r.driverName}</span>
             <div style="font-size: 8px; color: #9ca3af; font-family: monospace;">${r.riderId}</div>
@@ -307,14 +310,14 @@ function buildSummaryHTML(data: any): string {
         </div>
       `).join('')}
 
-      <div style="margin-top: 8px; margin-bottom: 4px; padding-bottom: 2px; border-bottom: 2px solid #b91c1c;">
+      <div style="margin-top: 6px; margin-bottom: 3px; padding-bottom: 2px; border-bottom: 2px solid #b91c1c;">
         <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #b91c1c; text-transform: uppercase;">Highest Deductions</div>
-        <div style="font-size: 11px; color: #6b7280;" dir="rtl">أعلى الخصومات</div>
+        <div style="font-size: 10px; color: #6b7280;" dir="rtl">أعلى الخصومات</div>
       </div>
       ${topDeductions.map((r: any, i: number) => {
         const totalDed = r.totalOtherPenalties + r.trafficViolationsDeduction + r.missingOrderDeduction
         return `
-          <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f3f4f6;">
+          <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #f3f4f6;">
             <div>
               <span style="font-size: 9px; font-weight: 700; color: #111827;">${i + 1}. ${r.driverName}</span>
               <div style="font-size: 8px; color: #9ca3af; font-family: monospace;">${r.riderId}</div>
@@ -326,19 +329,20 @@ function buildSummaryHTML(data: any): string {
     </div>
   </div>
 
-  <!-- Per-Rider Summary Table -->
-  <div style="padding: 0 32px 8px;">
-    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
-      <div style="padding: 5px 10px; background: linear-gradient(90deg, #f9fafb 0%, #ffffff 100%); border-bottom: 2px solid #064e3b;">
+  <!-- Per-Rider Summary Table — ALL RIDERS -->
+  <div style="padding: 0 28px 6px; flex: 1; display: flex; flex-direction: column; min-height: 0;">
+    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; flex: 1; display: flex; flex-direction: column;">
+      <div style="padding: 4px 10px; background: linear-gradient(90deg, #f9fafb 0%, #ffffff 100%); border-bottom: 2px solid #064e3b; flex-shrink: 0;">
         <div style="display: flex; align-items: baseline; gap: 8px;">
-          <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Per-Rider Summary</div>
+          <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #064e3b; text-transform: uppercase;">Per-Rider Summary · All ${totalDrivers} Riders</div>
           <div style="font-size: 11px; color: #6b7280;" dir="rtl">ملخص لكل سائق</div>
         </div>
       </div>
       <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
         <thead>
           <tr style="background: #f9fafb; color: #374151; border-bottom: 1px solid #e5e7eb;">
-            <th style="text-align: left; padding: 3px 8px; font-weight: 600; font-size: 8px;">Driver</th>
+            <th style="text-align: left; padding: 3px 8px; font-weight: 600; font-size: 8px;">#</th>
+            <th style="text-align: left; padding: 3px 6px; font-weight: 600; font-size: 8px;">Driver</th>
             <th style="text-align: right; padding: 3px 6px; font-weight: 600; font-size: 8px;">Orders</th>
             <th style="text-align: right; padding: 3px 6px; font-weight: 600; font-size: 8px;">Days</th>
             <th style="text-align: right; padding: 3px 6px; font-weight: 600; font-size: 8px;">Gross</th>
@@ -350,25 +354,26 @@ function buildSummaryHTML(data: any): string {
           </tr>
         </thead>
         <tbody>
-          ${topEarners.length > 0 ? topEarners.map((r: any) => {
+          ${allRidersSorted.map((r: any, i: number) => {
             const totalDed = r.totalOtherPenalties + r.trafficViolationsDeduction + r.missingOrderDeduction
             return `
-              <tr style="border-bottom: 1px solid #f3f4f6;">
-                <td style="padding: 3px 8px; font-weight: 600;">${r.driverName}</td>
-                <td style="padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums;">${r.completedOrders}</td>
-                <td style="padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums;">${r.actualWorkingDays.toFixed(0)}</td>
-                <td style="padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums;">${r.grossSalaryBeforePenalties.toFixed(0)}</td>
-                <td style="padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums; color: #059669;">${r.bonusAmount > 0 ? '+' + r.bonusAmount.toFixed(0) : '—'}</td>
-                <td style="padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums; color: #dc2626;">${r.totalOtherPenalties > 0 ? '-' + r.totalOtherPenalties.toFixed(0) : '—'}</td>
-                <td style="padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums; color: #92400e;">${r.trafficViolationsDeduction > 0 ? '-' + r.trafficViolationsDeduction.toFixed(0) : '—'}</td>
-                <td style="padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums; color: #dc2626;">-${totalDed.toFixed(0)}</td>
-                <td style="padding: 3px 8px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: #065f46;">${r.finalNetSalary.toFixed(2)}</td>
+              <tr style="border-bottom: 1px solid #f3f4f6; ${i % 2 === 1 ? 'background: #fafbfc;' : ''}">
+                <td style="padding: 2px 8px; color: #9ca3af; font-weight: 600;">${i + 1}</td>
+                <td style="padding: 2px 6px; font-weight: 600;">${r.driverName}<div style="font-size: 7px; color: #9ca3af; font-family: monospace;">${r.riderId}</div></td>
+                <td style="padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums;">${r.completedOrders}</td>
+                <td style="padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums;">${r.actualWorkingDays.toFixed(0)}</td>
+                <td style="padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums;">${r.grossSalaryBeforePenalties.toFixed(0)}</td>
+                <td style="padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums; color: #059669;">${r.bonusAmount > 0 ? '+' + r.bonusAmount.toFixed(0) : '—'}</td>
+                <td style="padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums; color: #dc2626;">${r.totalOtherPenalties > 0 ? '-' + r.totalOtherPenalties.toFixed(0) : '—'}</td>
+                <td style="padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums; color: #92400e;">${r.trafficViolationsDeduction > 0 ? '-' + r.trafficViolationsDeduction.toFixed(0) : '—'}</td>
+                <td style="padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums; color: #dc2626;">-${totalDed.toFixed(0)}</td>
+                <td style="padding: 2px 8px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: #065f46;">${r.finalNetSalary.toFixed(2)}</td>
               </tr>
             `
-          }).join('') : ''}
+          }).join('')}
           <!-- Total Row -->
           <tr style="font-weight: 700; background: #f0fdf4; border-top: 2px solid #064e3b;">
-            <td style="padding: 4px 8px;">TOTAL (${totalDrivers})</td>
+            <td style="padding: 4px 8px;" colspan="2">TOTAL (${totalDrivers} drivers)</td>
             <td style="padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums;">${totalCompletedOrders}</td>
             <td style="padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums;">${totalWorkingDays.toFixed(0)}</td>
             <td style="padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums;">${totalGross.toFixed(0)}</td>
@@ -383,49 +388,41 @@ function buildSummaryHTML(data: any): string {
     </div>
   </div>
 
-  <!-- Final Net Salary Hero -->
-  <div style="margin: 0 32px 8px; padding: 12px 20px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 50%, #a7f3d0 100%); border-radius: 10px; border: 2px solid #064e3b; box-shadow: 0 4px 12px rgba(6, 78, 59, 0.15); position: relative; overflow: hidden;">
+  <!-- Final Net Salary Hero — moved down, immediately above signatures -->
+  <div style="margin: 0 28px 4px; padding: 10px 18px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 50%, #a7f3d0 100%); border-radius: 10px; border: 2px solid #064e3b; box-shadow: 0 4px 12px rgba(6, 78, 59, 0.15); position: relative; overflow: hidden; flex-shrink: 0;">
     <div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #064e3b;"></div>
     <div style="display: flex; justify-content: space-between; align-items: center;">
       <div>
         <div style="font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #065f46; font-weight: 700;">Total Final Net Salary</div>
-        <div style="font-size: 13px; color: #065f46; font-weight: 600; margin-top: 2px;" dir="rtl">إجمالي صافي الرواتب</div>
+        <div style="font-size: 12px; color: #065f46; font-weight: 600; margin-top: 1px;" dir="rtl">إجمالي صافي الرواتب</div>
         <div style="font-size: 9px; color: #047857; margin-top: 2px;">${totalDrivers} drivers · ${payrollMonth} · Attainment: ${attainmentPct}%</div>
       </div>
       <div style="text-align: right;">
-        <div style="font-size: 28px; font-weight: 800; color: #064e3b; font-variant-numeric: tabular-nums; letter-spacing: -1px; line-height: 1;">SAR ${totalNet.toFixed(2)}</div>
+        <div style="font-size: 26px; font-weight: 800; color: #064e3b; font-variant-numeric: tabular-nums; letter-spacing: -1px; line-height: 1;">SAR ${totalNet.toFixed(2)}</div>
         <div style="font-size: 9px; color: #047857; margin-top: 2px;">Gross: SAR ${totalGross.toFixed(0)} · Deductions: SAR ${totalDeductions.toFixed(0)}</div>
       </div>
     </div>
   </div>
 
-  <!-- Active Rules Summary -->
-  <div style="margin: 0 32px 8px; padding: 6px 14px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 9px; color: #6b7280;">
-    <strong style="color: #374151;">Active Rules:</strong>
-    ${ruleSummary ? `
-      Mode: ${ruleSummary.salaryMode} · Base: SAR ${ruleSummary.monthlyBaseSalary} · Target: ${ruleSummary.monthlyTargetOrders} orders · Per Order: SAR ${ruleSummary.salaryPerOrderRate?.toFixed(4)} · Bonus: SAR ${ruleSummary.bonusPerExtraOrder}/extra · Deduct: SAR ${ruleSummary.deductionPerMissingOrder}/missing
-    ` : 'Rules not available'}
-  </div>
-
-  <!-- Footer -->
-  <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 8px 32px 10px; border-top: 2px solid #064e3b; background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);">
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+  <!-- Footer with signatures — immediately after net salary -->
+  <div style="padding: 8px 28px 8px; border-top: 2px solid #064e3b; background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%); flex-shrink: 0;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 36px;">
       <div style="text-align: center;">
-        <div style="height: 30px; border-bottom: 2px solid #064e3b; margin-bottom: 3px; position: relative;">
-          ${company?.signatureImg ? `<img src="${company.signatureImg}" alt="Acc Mgr" style="max-height: 26px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" crossorigin="anonymous"/>` : ''}
+        <div style="height: 26px; border-bottom: 2px solid #064e3b; margin-bottom: 3px; position: relative;">
+          ${company?.signatureImg ? `<img src="${company.signatureImg}" alt="Acc Mgr" style="max-height: 24px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" crossorigin="anonymous"/>` : ''}
         </div>
         <div style="font-size: 10px; font-weight: 700; color: #064e3b;">${company?.accManagerName || 'Accounting Manager'}</div>
         <div style="font-size: 10px; color: #047857;" dir="rtl">مدير الحسابات</div>
       </div>
       <div style="text-align: center;">
-        <div style="height: 30px; border-bottom: 2px solid #064e3b; margin-bottom: 3px; position: relative;">
-          ${company?.riderSignatureImg ? `<img src="${company.riderSignatureImg}" alt="Driver" style="max-height: 26px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" crossorigin="anonymous"/>` : ''}
+        <div style="height: 26px; border-bottom: 2px solid #064e3b; margin-bottom: 3px; position: relative;">
+          ${company?.riderSignatureImg ? `<img src="${company.riderSignatureImg}" alt="Driver" style="max-height: 24px; object-fit: contain; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);" crossorigin="anonymous"/>` : ''}
         </div>
         <div style="font-size: 10px; font-weight: 700; color: #064e3b;">Authorized Signature</div>
         <div style="font-size: 10px; color: #047857;" dir="rtl">التوقيع المعتمد</div>
       </div>
     </div>
-    <div style="font-size: 7px; color: #6b7280; margin-top: 6px; text-align: center;">
+    <div style="font-size: 7px; color: #6b7280; margin-top: 4px; text-align: center;">
       Generated: ${new Date().toLocaleString()} · ${company?.footerNote || 'Computer-generated summary report'}
     </div>
   </div>
