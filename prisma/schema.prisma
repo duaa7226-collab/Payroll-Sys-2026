@@ -206,6 +206,7 @@ model PayrollException {
   message       String
   suggestedAction String?
   reviewStatus  String   @default("open") // open | resolved | ignored
+  createdAt     DateTime @default(now())
   payrollRun    PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
 }
 

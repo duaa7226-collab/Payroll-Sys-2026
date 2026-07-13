@@ -20,8 +20,21 @@ export function ExceptionsView({ runId }: { runId: string | null }) {
     if (!runId) return
     queueMicrotask(() => setLoading(true))
     fetch(`/api/exceptions?runId=${runId}`)
-      .then(r => r.json())
+      .then(async r => {
+        const text = await r.text()
+        if (!text) return { exceptions: [], bySeverity: { error: 0, warning: 0, info: 0 } }
+        try {
+          return JSON.parse(text)
+        } catch {
+          console.error('Exceptions API returned non-JSON:', text.slice(0, 200))
+          return { exceptions: [], bySeverity: { error: 0, warning: 0, info: 0 } }
+        }
+      })
       .then(d => setData(d))
+      .catch(err => {
+        console.error('Fetch exceptions failed:', err)
+        setData({ exceptions: [], bySeverity: { error: 0, warning: 0, info: 0 } })
+      })
       .finally(() => setLoading(false))
   }, [runId])
 

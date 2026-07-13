@@ -121,3 +121,28 @@ Stage Summary:
 - Each box has label above (English left + Arabic right) and value inside (bold)
 - Visual style: white background, light gray border, 6px radius, subtle shadow
 - Layout: 2 rows × 3 columns grid, 10px gap, 12px row-gap
+
+---
+Task ID: fix-exceptions-json-error
+Agent: main
+Task: Fix runtime SyntaxError "Failed to execute 'json' on 'Response': Unexpected end of JSON input" in ExceptionsView
+
+Work Log:
+- Root cause: PayrollException model in prisma/schema.prisma was MISSING the `createdAt` field
+- The API route /api/exceptions tried to orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }]
+- Prisma threw an error because `createdAt` didn't exist on the model
+- Next.js returned an empty response body (no JSON), causing r.json() to fail client-side
+- Fix 1: Added `createdAt DateTime @default(now())` to PayrollException in prisma/schema.prisma
+- Fix 2: Ran `npx prisma db push` to sync schema with database
+- Fix 3: Ran `npx prisma generate` to regenerate the Prisma Client
+- Fix 4: Wrapped /api/exceptions GET in try/catch — returns proper JSON error response on failure
+- Fix 5: Made ExceptionsView fetch defensive — handles empty/non-JSON responses gracefully
+  * Reads response as text first
+  * Returns safe default (empty exceptions) if body is empty or unparseable
+  * Catches network errors and shows empty state instead of crashing
+
+Stage Summary:
+- Exceptions page no longer crashes with JSON parsing error
+- Schema now properly tracks exception creation time
+- API route is defensive — always returns valid JSON
+- Client is defensive — handles any malformed response without throwing
