@@ -146,3 +146,27 @@ Stage Summary:
 - Schema now properly tracks exception creation time
 - API route is defensive — always returns valid JSON
 - Client is defensive — handles any malformed response without throwing
+
+---
+Task ID: remove-mock-traffic-violations
+Agent: main
+Task: Remove all mock/sample traffic violations — list should start empty, users add their own
+
+Work Log:
+- Found mock data source: src/lib/seed.ts lines 213-237 created 3 sample traffic violations (Speeding 300, Parking 150, Red Light 500)
+- The seed ran multiple times, accumulating 38 mock violations in the database
+- Removed the sample violation block from seed.ts entirely (replaced with comment)
+- Created and ran scripts/clear_mock_violations.ts to delete existing mock violations
+  - Deleted all violations with notes containing "Sample" or "demo"
+  - Database now has 0 traffic violations
+- Triggered recalculation via /api/recalculate to update driver results
+  - totalTraffic now 0 (was inflated by mock violations before)
+  - All driver results refreshed with clean state
+- Verified next build succeeds
+
+Stage Summary:
+- Traffic Violations page now starts EMPTY
+- Users add their own violations manually via "Add Violation" button
+- No mock data injected on seed/re-seed
+- Existing mock violations (38) purged from database
+- Driver results recalculated to reflect zero traffic deductions

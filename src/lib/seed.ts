@@ -210,31 +210,7 @@ async function main() {
     },
   })
 
-  // 7. Sample traffic violations for demo
-  const drivers = await db.driver.findMany()
-  if (drivers.length > 0) {
-    const samples = [
-      { riderId: drivers[0].riderId, type: 'Speeding', amount: 300, daysAgo: 5 },
-      { riderId: drivers[1].riderId, type: 'Parking', amount: 150, daysAgo: 12 },
-      { riderId: drivers[2].riderId, type: 'Red Light', amount: 500, daysAgo: 3 },
-    ]
-    for (const s of samples) {
-      const drv = await db.driver.findUnique({ where: { riderId: s.riderId } })
-      if (!drv) continue
-      await db.trafficViolation.create({
-        data: {
-          driverId: drv.id,
-          riderId: s.riderId,
-          ticketDate: new Date(Date.now() - s.daysAgo * 86400000),
-          violationType: s.type,
-          amount: s.amount,
-          status: 'approved',
-          notes: `Sample ${s.type} violation for demo`,
-        },
-      })
-    }
-    console.log(`Created ${samples.length} sample traffic violations`)
-  }
+  // 7. (Sample traffic violations removed — list starts empty, users add their own)
 
   // 7b. Process custom deduction installments
   await processCustomDeductionInstallments()
