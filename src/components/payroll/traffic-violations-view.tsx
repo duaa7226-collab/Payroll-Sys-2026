@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 import {
   CarFront, Plus, Search, Trash2, Pencil, AlertCircle,
-  CheckCircle2, X, Download
+  CheckCircle2, X, Download, Clock, Calendar
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select'
@@ -39,8 +40,13 @@ export function TrafficViolationsView() {
     const params = new URLSearchParams()
     if (statusFilter !== 'all') params.set('status', statusFilter)
     fetch(`/api/traffic-violations?${params.toString()}`)
-      .then(r => r.json())
+      .then(async r => {
+        const text = await r.text()
+        if (!text) return { violations: [], byDriver: [], total: 0, approved: 0 }
+        try { return JSON.parse(text) } catch { return { violations: [], byDriver: [], total: 0, approved: 0 } }
+      })
       .then(d => setData(d))
+      .catch(() => setData({ violations: [], byDriver: [], total: 0, approved: 0 }))
       .finally(() => setLoading(false))
   }
 
@@ -49,17 +55,15 @@ export function TrafficViolationsView() {
   }, [statusFilter])
 
   useEffect(() => {
-    fetch('/api/drivers?runId=').catch(() => {})
-    // Load drivers list from any payroll run
-    fetch('/api/dashboard')
-      .then(r => r.json())
-      .then(d => {
-        if (d?.run?.id) {
-          fetch(`/api/drivers?runId=${d.run.id}`)
-            .then(r => r.json())
-            .then(dr => setDrivers(dr?.results ?? []))
-        }
+    // Load drivers list from the Driver table (works even without a payroll run)
+    fetch('/api/drivers?all=1')
+      .then(async r => {
+        const text = await r.text()
+        if (!text) return { results: [] }
+        try { return JSON.parse(text) } catch { return { results: [] } }
       })
+      .then(dr => setDrivers(dr?.results ?? []))
+      .catch(() => setDrivers([]))
   }, [])
 
   const openCreate = () => {
@@ -94,7 +98,7 @@ export function TrafficViolationsView() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Traffic Violations</h1>
           <p className="text-sm text-muted-foreground">
-            Manage traffic tickets as payroll deductions · appears on payslips
+            Manage traffic tickets as payroll deductions · appears on payslips · supports monthly installments
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -112,13 +116,13 @@ export function TrafficViolationsView() {
         </Card>
         <Card className="card-glow">
           <CardContent className="p-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Amount</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Monthly Deduction Total</div>
             <div className="mt-1 text-2xl font-bold tabular-nums">SAR {data?.total?.toFixed(2) ?? '0.00'}</div>
           </CardContent>
         </Card>
         <Card className="card-glow">
           <CardContent className="p-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Approved (Deductible)</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Approved (Deductible this month)</div>
             <div className="mt-1 text-2xl font-bold tabular-nums text-emerald-600">SAR {data?.approved?.toFixed(2) ?? '0.00'}</div>
           </CardContent>
         </Card>
@@ -168,16 +172,17 @@ export function TrafficViolationsView() {
                   <th className="py-3 px-4 font-medium">Rider ID</th>
                   <th className="py-3 px-4 font-medium">Type</th>
                   <th className="py-3 px-4 font-medium">Status</th>
-                  <th className="py-3 px-4 font-medium">Notes</th>
+                  <th className="py-3 px-4 font-medium">Payment Mode</th>
                   <th className="py-3 px-4 font-medium text-right">Amount (SAR)</th>
+                  <th className="py-3 px-4 font-medium text-right">Monthly (SAR)</th>
                   <th className="py-3 px-4 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="py-12 text-center text-muted-foreground">Loading...</td></tr>
+                  <tr><td colSpan={8} className="py-12 text-center text-muted-foreground">Loading...</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={7} className="py-12 text-center text-muted-foreground">
+                  <tr><td colSpan={8} className="py-12 text-center text-muted-foreground">
                     <CarFront className="mx-auto h-10 w-10 opacity-40 mb-2" />
                     No violations found
                   </td></tr>
@@ -195,8 +200,39 @@ export function TrafficViolationsView() {
                         {v.status}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-xs text-muted-foreground max-w-[200px] truncate">{v.notes}</td>
+                    <td className="py-3 px-4">
+                      {v.installmentEnabled ? (
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="outline" className="text-[9px] w-fit text-amber-700 border-amber-500/40 bg-amber-500/10">
+                            <Clock className="h-2.5 w-2.5 mr-0.5" /> Installment
+                          </Badge>
+                          <span className="text-[9px] text-muted-foreground">
+                            {v.installmentStatus === 'completed' ? (
+                              <span className="text-emerald-600">✓ Completed</span>
+                            ) : (
+                              <>
+                                Paid: <strong>{v.installmentTotalPaid?.toFixed(0)}</strong> / {v.amount.toFixed(0)}
+                                {' · '}<Calendar className="inline h-2.5 w-2.5" /> {v.installmentRemainingMonths ?? 0}mo left
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-[9px] text-cyan-700 border-cyan-500/40 bg-cyan-500/10">
+                          One-time
+                        </Badge>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-right tabular-nums font-semibold">{v.amount.toFixed(2)}</td>
+                    <td className="py-3 px-4 text-right tabular-nums">
+                      {v.installmentEnabled ? (
+                        <span className="font-semibold text-amber-700">
+                          {v.installmentStatus === 'completed' ? '0.00' : (v.monthlyDeduction ?? 0).toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">{v.amount.toFixed(2)}</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="sm" onClick={() => openEdit(v)}>
@@ -241,6 +277,8 @@ function EditViolationDialog({ open, onOpenChange, violation, drivers, onSaved }
   const [ticketNumber, setTicketNumber] = useState('')
   const [status, setStatus] = useState('approved')
   const [notes, setNotes] = useState('')
+  const [installmentEnabled, setInstallmentEnabled] = useState(false)
+  const [installmentMonthly, setInstallmentMonthly] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -252,6 +290,8 @@ function EditViolationDialog({ open, onOpenChange, violation, drivers, onSaved }
       setTicketNumber(violation.ticketNumber || '')
       setStatus(violation.status)
       setNotes(violation.notes || '')
+      setInstallmentEnabled(!!violation.installmentEnabled)
+      setInstallmentMonthly(violation.installmentMonthlyAmount ? String(violation.installmentMonthlyAmount) : '')
     } else {
       setRiderId(drivers[0]?.riderId ?? '')
       setViolationType('')
@@ -260,6 +300,8 @@ function EditViolationDialog({ open, onOpenChange, violation, drivers, onSaved }
       setTicketNumber('')
       setStatus('approved')
       setNotes('')
+      setInstallmentEnabled(false)
+      setInstallmentMonthly('')
     }
   }, [violation, drivers, open])
 
@@ -268,9 +310,21 @@ function EditViolationDialog({ open, onOpenChange, violation, drivers, onSaved }
       toast.error('Rider, type, and amount are required')
       return
     }
+    if (installmentEnabled && (!installmentMonthly || parseFloat(installmentMonthly) <= 0)) {
+      toast.error('Monthly installment amount required')
+      return
+    }
+    if (installmentEnabled && parseFloat(installmentMonthly) >= parseFloat(amount)) {
+      toast.error('Monthly installment must be less than total amount')
+      return
+    }
     setSaving(true)
     try {
-      const body = { riderId, violationType, amount: parseFloat(amount), ticketDate, ticketNumber, status, notes }
+      const body = {
+        riderId, violationType, amount: parseFloat(amount), ticketDate, ticketNumber, status, notes,
+        installmentEnabled,
+        installmentMonthlyAmount: installmentEnabled ? parseFloat(installmentMonthly) : 0,
+      }
       let resp
       if (violation) {
         resp = await fetch('/api/traffic-violations', {
@@ -298,13 +352,22 @@ function EditViolationDialog({ open, onOpenChange, violation, drivers, onSaved }
     }
   }
 
+  // Calculations for installment preview
+  const totalAmount = parseFloat(amount) || 0
+  const monthlyAmount = parseFloat(installmentMonthly) || 0
+  const remainingMonths = installmentEnabled && monthlyAmount > 0 ? Math.ceil(totalAmount / monthlyAmount) : 0
+  // If editing an installment violation, show remaining months from current progress
+  const alreadyPaid = violation?.installmentTotalPaid ?? 0
+  const remaining = Math.max(0, totalAmount - alreadyPaid)
+  const remainingMonthsFromNow = installmentEnabled && monthlyAmount > 0 ? Math.ceil(remaining / monthlyAmount) : 0
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-[520px]">
         <DialogHeader>
           <DialogTitle>{violation ? 'Edit Violation' : 'Add Traffic Violation'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 py-2">
+        <div className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-1">
           <div>
             <Label className="text-xs">Driver / Rider ID</Label>
             <Select value={riderId} onValueChange={setRiderId}>
@@ -326,8 +389,8 @@ function EditViolationDialog({ open, onOpenChange, violation, drivers, onSaved }
               <Input value={violationType} onChange={(e) => setViolationType(e.target.value)} placeholder="e.g. Speeding" />
             </div>
             <div>
-              <Label className="text-xs">Amount (SAR)</Label>
-              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} step="0.01" />
+              <Label className="text-xs">Total Amount (SAR)</Label>
+              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} step="0.01" placeholder="e.g. 2500" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -354,6 +417,53 @@ function EditViolationDialog({ open, onOpenChange, violation, drivers, onSaved }
               </SelectContent>
             </Select>
           </div>
+
+          {/* Installment option */}
+          <div className="rounded-lg border border-border p-3 space-y-2 bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Switch checked={installmentEnabled} onCheckedChange={setInstallmentEnabled} />
+              <Label className="text-[11px] font-medium flex items-center gap-1">
+                <Clock className="h-3 w-3" /> Installment Plan (deduct monthly until paid)
+              </Label>
+            </div>
+            {installmentEnabled && (
+              <div className="pl-6 space-y-2">
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Monthly Deduction Amount (SAR)</Label>
+                  <Input
+                    type="number"
+                    value={installmentMonthly}
+                    onChange={(e) => setInstallmentMonthly(e.target.value)}
+                    placeholder="e.g. 300"
+                    step="0.01"
+                    className="h-8"
+                  />
+                </div>
+                {totalAmount > 0 && monthlyAmount > 0 && (
+                  <div className="text-[10px] text-muted-foreground bg-white/60 dark:bg-black/20 rounded p-2 border border-border/50">
+                    <div className="font-medium text-foreground">
+                      Total: SAR {totalAmount.toFixed(2)} · Monthly: SAR {monthlyAmount.toFixed(2)}
+                    </div>
+                    {violation && alreadyPaid > 0 ? (
+                      <div className="mt-0.5">
+                        Already paid: <strong>SAR {alreadyPaid.toFixed(2)}</strong> ·
+                        Remaining: <strong>SAR {remaining.toFixed(2)}</strong> ·
+                        ~{remainingMonthsFromNow} month(s) left
+                      </div>
+                    ) : (
+                      <div className="mt-0.5">
+                        Will be deducted over ~<strong>{remainingMonths}</strong> month(s)
+                      </div>
+                    )}
+                    <div className="mt-1 text-[9px] italic opacity-80">
+                      ℹ️ Each payroll run will deduct SAR {monthlyAmount.toFixed(2)}/month from this rider until the full amount is paid.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div>
             <Label className="text-xs">Notes</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />

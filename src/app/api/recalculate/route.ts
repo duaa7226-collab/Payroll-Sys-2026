@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
-import { getAllRiderTrafficDeductions } from '@/lib/traffic-helpers'
+import { getAllRiderTrafficDeductions, processInstallmentDeductions } from '@/lib/traffic-helpers'
 import { getAllRiderManualAdjustments } from '@/lib/manual-adjustment-helpers'
 import { getActiveCustomBonuses, getBonusesForRider } from '@/lib/custom-bonus-helpers'
 import { getActiveCustomDeductions, getDeductionsForRider, processCustomDeductionInstallments } from '@/lib/custom-deduction-helpers'
@@ -122,8 +122,10 @@ export async function POST(req: NextRequest) {
       data: { totalGross, totalPenalties, totalNet, totalVariance, totalTraffic, ruleSnapshot: JSON.stringify(activeRules.snapshot) },
     })
 
-    // Process custom deduction installments after recalculation
+    // Process custom deduction installments after recalculation (advance progress for next month)
     await processCustomDeductionInstallments()
+    // Process traffic violation installments (advance progress for next month)
+    try { await processInstallmentDeductions(riderIds) } catch (e) { console.error('Traffic installment processing failed:', e) }
 
     return NextResponse.json({
       success: true,

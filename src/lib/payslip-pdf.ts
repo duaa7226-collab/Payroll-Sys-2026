@@ -311,19 +311,33 @@ function buildPayslipHTML(data: any): string {
           <tr style="background: #FEF3E2; color: #92400e;">
             <th style="text-align: left; padding: 3px 12px; font-size: 9px;">Date</th>
             <th style="text-align: left; padding: 3px 12px; font-size: 9px;">Type</th>
-            <th style="text-align: left; padding: 3px 12px; font-size: 9px;">Status</th>
-            <th style="text-align: right; padding: 3px 12px; font-size: 9px;">Amount (SAR)</th>
+            <th style="text-align: left; padding: 3px 12px; font-size: 9px;">Mode</th>
+            <th style="text-align: right; padding: 3px 12px; font-size: 9px;">Total (SAR)</th>
+            <th style="text-align: right; padding: 3px 12px; font-size: 9px;">This Month (SAR)</th>
           </tr>
         </thead>
         <tbody>
-          ${traffic.map((t: any) => `
+          ${traffic.map((t: any) => {
+            const isInst = t.installmentEnabled
+            const remaining = isInst ? Math.max(0, t.amount - (t.installmentTotalPaid || 0)) : 0
+            const monthly = isInst && t.installmentStatus === 'active'
+              ? Math.min(t.installmentMonthlyAmount || 0, remaining)
+              : (isInst ? 0 : t.amount)
+            const modeLabel = isInst
+              ? (t.installmentStatus === 'completed' ? 'Installment ✓' : 'Installment')
+              : 'One-time'
+            return `
             <tr style="border-bottom: 1px solid #f3f4f6;">
               <td style="padding: 3px 12px; font-size: 9px;">${new Date(t.ticketDate).toLocaleDateString('en-GB')}</td>
               <td style="padding: 3px 12px; font-size: 9px;">${t.violationType}</td>
-              <td style="padding: 3px 12px; font-size: 9px; text-transform: capitalize;">${t.status}</td>
-              <td style="padding: 3px 12px; font-size: 9px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;">${t.amount.toFixed(2)}</td>
+              <td style="padding: 3px 12px; font-size: 9px;">
+                ${modeLabel}
+                ${isInst && t.installmentStatus !== 'completed' ? `<div style="font-size: 7px; color: #9ca3af;">Paid: ${(t.installmentTotalPaid || 0).toFixed(0)} / ${t.amount.toFixed(0)}</div>` : ''}
+              </td>
+              <td style="padding: 3px 12px; font-size: 9px; text-align: right; font-variant-numeric: tabular-nums; color: ${isInst ? '#92400e' : '#111'};">${t.amount.toFixed(2)}</td>
+              <td style="padding: 3px 12px; font-size: 9px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: ${ORANGE};">${monthly.toFixed(2)}</td>
             </tr>
-          `).join('')}
+          `}).join('')}
         </tbody>
       </table>
     </div>

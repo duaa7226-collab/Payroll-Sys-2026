@@ -250,7 +250,7 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
           </div>
         </div>
 
-        {/* ===== Traffic Detail (if any) ===== */}
+        {/* ===== Traffic Detail (if any) — with installment info ===== */}
         {traffic && traffic.length > 0 && (
           <div style={{ marginTop: '8px', background: 'white', border: '1px solid #E0E0E0', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', flexShrink: 0 }}>
             <div style={{ padding: '5px 12px', background: '#FEF3E2', borderBottom: `2px solid ${ORANGE}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -262,19 +262,36 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
                 <tr style={{ background: '#FEF3E2', color: '#92400e' }}>
                   <th style={{ textAlign: 'left', padding: '3px 12px', fontSize: '9px' }}>Date</th>
                   <th style={{ textAlign: 'left', padding: '3px 12px', fontSize: '9px' }}>Type</th>
-                  <th style={{ textAlign: 'left', padding: '3px 12px', fontSize: '9px' }}>Status</th>
-                  <th style={{ textAlign: 'right', padding: '3px 12px', fontSize: '9px' }}>Amount (SAR)</th>
+                  <th style={{ textAlign: 'left', padding: '3px 12px', fontSize: '9px' }}>Mode</th>
+                  <th style={{ textAlign: 'right', padding: '3px 12px', fontSize: '9px' }}>Total (SAR)</th>
+                  <th style={{ textAlign: 'right', padding: '3px 12px', fontSize: '9px' }}>This Month (SAR)</th>
                 </tr>
               </thead>
               <tbody>
-                {traffic.map((t: any) => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '3px 12px', fontSize: '9px' }}>{new Date(t.ticketDate).toLocaleDateString('en-GB')}</td>
-                    <td style={{ padding: '3px 12px', fontSize: '9px' }}>{t.violationType}</td>
-                    <td style={{ padding: '3px 12px', fontSize: '9px', textTransform: 'capitalize' }}>{t.status}</td>
-                    <td style={{ padding: '3px 12px', fontSize: '9px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{t.amount.toFixed(2)}</td>
-                  </tr>
-                ))}
+                {traffic.map((t: any) => {
+                  const isInst = t.installmentEnabled
+                  const remaining = isInst ? Math.max(0, t.amount - (t.installmentTotalPaid || 0)) : 0
+                  const monthly = isInst && t.installmentStatus === 'active'
+                    ? Math.min(t.installmentMonthlyAmount || 0, remaining)
+                    : (isInst ? 0 : t.amount)
+                  const modeLabel = isInst
+                    ? (t.installmentStatus === 'completed' ? 'Installment ✓' : 'Installment')
+                    : 'One-time'
+                  return (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '3px 12px', fontSize: '9px' }}>{new Date(t.ticketDate).toLocaleDateString('en-GB')}</td>
+                      <td style={{ padding: '3px 12px', fontSize: '9px' }}>{t.violationType}</td>
+                      <td style={{ padding: '3px 12px', fontSize: '9px' }}>
+                        {modeLabel}
+                        {isInst && t.installmentStatus !== 'completed' && (
+                          <div style={{ fontSize: '7px', color: '#9ca3af' }}>Paid: {(t.installmentTotalPaid || 0).toFixed(0)} / {t.amount.toFixed(0)}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: '3px 12px', fontSize: '9px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: isInst ? '#92400e' : '#111' }}>{t.amount.toFixed(2)}</td>
+                      <td style={{ padding: '3px 12px', fontSize: '9px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: ORANGE }}>{monthly.toFixed(2)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

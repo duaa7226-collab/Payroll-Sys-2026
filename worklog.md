@@ -170,3 +170,52 @@ Stage Summary:
 - No mock data injected on seed/re-seed
 - Existing mock violations (38) purged from database
 - Driver results recalculated to reflect zero traffic deductions
+
+---
+Task ID: add-installment-traffic-violations
+Agent: main
+Task: Add monthly installment option to traffic violations (pay large fines over multiple months)
+
+Work Log:
+- Reviewed existing installment pattern in custom-deduction-helpers.ts and rules-control-center.tsx
+- Found that traffic-helpers.ts ALREADY had installment-aware logic (getAllRiderTrafficDeductions, processInstallmentDeductions) but the schema was missing the installment fields
+- Schema change (prisma/schema.prisma):
+  * Added to TrafficViolation model:
+    - installmentEnabled Boolean @default(false)
+    - installmentMonthlyAmount Float @default(0)
+    - installmentTotalPaid Float @default(0)
+    - installmentStatus String @default("none") // none | active | completed
+- Ran prisma db push + prisma generate to apply schema
+- API update (src/app/api/traffic-violations/route.ts):
+  * GET: now returns installment fields + computed monthlyDeduction, remainingBalance, installmentRemainingMonths for each violation
+  * POST: accepts installmentEnabled, installmentMonthlyAmount; validates monthly > 0 and < total; sets installmentStatus='active' on create
+  * PUT: accepts installment fields; preserves installmentTotalPaid when toggling; resets to 0 if turned on fresh; auto-completes if totalPaid >= amount
+  * All routes wrapped in try/catch with proper error responses
+- Import route (src/app/api/import/route.ts):
+  * Switched from raw findMany (full amount) to getAllRiderTrafficDeductions (monthly installment amount)
+  * Now traffic deduction on payslip = monthly portion only for installment violations
+- Recalculate route (src/app/api/recalculate/route.ts):
+  * Added processInstallmentDeductions(riderIds) call after recalc to advance installment progress (totalPaid += monthlyDeduction)
+- UI update (src/components/payroll/traffic-violations-view.tsx):
+  * Added Switch + Monthly Amount input in the dialog (installment option card)
+  * Live preview: shows total, monthly, remaining months, already-paid info
+  * Validates: monthly required if installment enabled, monthly must be < total
+  * Table: added "Payment Mode" column showing Installment/One-time badge + progress (Paid: X / Y · Nmo left)
+  * Added "Monthly (SAR)" column showing this month's deduction
+  * KPI labels updated: "Monthly Deduction Total" / "Approved (Deductible this month)"
+  * Reload is defensive (handles empty/non-JSON responses)
+- Payslip PDF + on-screen preview updated:
+  * Traffic tickets table now has columns: Date | Type | Mode | Total | This Month
+  * Mode shows "Installment" or "One-time", with "Paid: X / Y" sub-line for active installments
+  * "This Month" column shows the actual amount deducted this month (monthly portion for installments)
+- Verified build succeeds
+- Verified traffic-violations API returns 200 with empty list
+
+Stage Summary:
+- Traffic violations now support monthly installment plans
+- User can enable installment when adding/editing a violation, set monthly amount
+- Each payroll run deducts only the monthly portion (not full amount) for installment violations
+- After each recalc/import, installment progress advances (totalPaid += monthlyDeduction)
+- When fully paid, installment status auto-marks as 'completed' (no further deduction)
+- UI shows installment progress in the violations table (Paid: X / Y · N months left)
+- Payslips show installment info clearly: Mode column + This Month column

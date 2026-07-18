@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
 import { parseWorkbook } from '@/lib/excel-parser'
 import { calculateDriverSalary } from '@/lib/salary-engine'
+import { getAllRiderTrafficDeductions } from '@/lib/traffic-helpers'
 
 // POST /api/import — accepts multipart/form-data with file + payrollMonth
 export async function POST(req: NextRequest) {
@@ -29,18 +30,13 @@ export async function POST(req: NextRequest) {
 
     const activeRules = await getActiveRuleSnapshot()
 
-    // Get traffic violations per driver
-    const allViolations = await db.trafficViolation.findMany({
-      where: { status: 'approved' },
-    })
-    const violationsByRider = new Map<string, number>()
-    for (const v of allViolations) {
-      violationsByRider.set(v.riderId, (violationsByRider.get(v.riderId) ?? 0) + v.amount)
-    }
+    // Get traffic violations per driver (installment-aware: only counts monthly portion)
+    const allRiderIds = parsed.drivers.map(d => d.riderId)
+    const trafficByRider = await getAllRiderTrafficDeductions(allRiderIds)
 
     // Enrich raw drivers with traffic violations
     for (const d of parsed.drivers) {
-      d.trafficViolationsTotal = violationsByRider.get(d.riderId) ?? 0
+      d.trafficViolationsTotal = trafficByRider.get(d.riderId)?.total ?? 0
     }
 
     // Create payroll run

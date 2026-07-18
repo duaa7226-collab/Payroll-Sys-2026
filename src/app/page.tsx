@@ -6,6 +6,7 @@ import { sonnerToast } from '@/lib/sonner'
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   Settings2,
   FileText,
   CarFront,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react'
 import { DashboardView } from '@/components/payroll/dashboard-view'
 import { DriversView } from '@/components/payroll/drivers-view'
+import { DriversRegistrationView } from '@/components/payroll/drivers-registration-view'
 import { RulesControlCenter } from '@/components/payroll/rules-control-center'
 import { PayslipsView } from '@/components/payroll/payslips-view'
 import { TrafficViolationsView } from '@/components/payroll/traffic-violations-view'
@@ -33,6 +35,7 @@ import { cn } from '@/lib/utils'
 type TabId =
   | 'dashboard'
   | 'drivers'
+  | 'drivers_registration'
   | 'rules'
   | 'payslips'
   | 'traffic'
@@ -44,6 +47,7 @@ type TabId =
 const TABS: { id: TabId; label: string; labelAr: string; icon: any; group: string }[] = [
   { id: 'dashboard', label: 'Dashboard', labelAr: 'لوحة القيادة', icon: LayoutDashboard, group: 'main' },
   { id: 'drivers', label: 'Driver Results', labelAr: 'نتائج السائقين', icon: Users, group: 'main' },
+  { id: 'drivers_registration', label: 'Drivers Registration', labelAr: 'تسجيل السائقين', icon: UserPlus, group: 'main' },
   { id: 'payslips', label: 'Payslips', labelAr: 'قسائم الرواتب', icon: FileText, group: 'main' },
   { id: 'exceptions', label: 'Exceptions', labelAr: 'الاستثناءات', icon: AlertTriangle, group: 'main' },
   { id: 'rules', label: 'Rules Control Center', labelAr: 'مركز القواعد', icon: Settings2, group: 'config' },
@@ -139,6 +143,7 @@ export default function Home() {
         <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8">
           {activeTab === 'dashboard' && <DashboardView runId={runId} setRunId={setRunId} onNavigate={setActiveTab} />}
           {activeTab === 'drivers' && <DriversView runId={runId} setRunId={setRunId} onNavigate={setActiveTab} />}
+          {activeTab === 'drivers_registration' && <DriversRegistrationView />}
           {activeTab === 'rules' && <RulesControlCenter />}
           {activeTab === 'payslips' && <PayslipsView runId={runId} />}
           {activeTab === 'traffic' && <TrafficViolationsView />}

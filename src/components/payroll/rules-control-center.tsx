@@ -248,11 +248,8 @@ function CustomBonusesSection() {
 
   useEffect(() => {
     reload()
-    safeFetchJson('/api/dashboard', null).then(d => {
-      if (d?.run?.id) {
-        safeFetchJson(`/api/drivers?runId=${d.run.id}`, { results: [] }).then(dr => setDrivers(dr?.results ?? []))
-      }
-    })
+    // Load all drivers (works without a payroll run)
+    safeFetchJson('/api/drivers?all=1', { results: [] }).then(dr => setDrivers(dr?.results ?? []))
   }, [])
 
   const triggerRecalc = () => {
@@ -455,11 +452,8 @@ function CustomDeductionsSection() {
 
   useEffect(() => {
     reload()
-    safeFetchJson('/api/dashboard', null).then(d => {
-      if (d?.run?.id) {
-        safeFetchJson(`/api/drivers?runId=${d.run.id}`, { results: [] }).then(dr => setDrivers(dr?.results ?? []))
-      }
-    })
+    // Load all drivers (works without a payroll run)
+    safeFetchJson('/api/drivers?all=1', { results: [] }).then(dr => setDrivers(dr?.results ?? []))
   }, [])
 
   const triggerRecalc = () => {
