@@ -19,6 +19,7 @@ import {
   Target,
   Shield,
   Activity,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { DashboardView } from '@/components/payroll/dashboard-view'
 import { DriversView } from '@/components/payroll/drivers-view'
@@ -30,7 +31,14 @@ import { ImportView } from '@/components/payroll/import-view'
 import { AuditLogsView } from '@/components/payroll/audit-logs-view'
 import { CompanyBrandingView } from '@/components/payroll/company-branding-view'
 import { ExceptionsView } from '@/components/payroll/exceptions-view'
+import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
+
+// Dynamically import the Map Rider page (avoids pulling xlsx into the main bundle)
+const MapRiderPage = dynamic(() => import('./finance/map-rider/page').then(m => m.default), {
+  ssr: false,
+  loading: () => <div className="p-12 text-center text-muted-foreground">Loading...</div>,
+})
 
 type TabId =
   | 'dashboard'
@@ -39,6 +47,7 @@ type TabId =
   | 'rules'
   | 'payslips'
   | 'traffic'
+  | 'map_rider'
   | 'import'
   | 'exceptions'
   | 'audit'
@@ -52,6 +61,7 @@ const TABS: { id: TabId; label: string; labelAr: string; icon: any; group: strin
   { id: 'exceptions', label: 'Exceptions', labelAr: 'الاستثناءات', icon: AlertTriangle, group: 'main' },
   { id: 'rules', label: 'Rules Control Center', labelAr: 'مركز القواعد', icon: Settings2, group: 'config' },
   { id: 'traffic', label: 'Traffic Violations', labelAr: 'المخالفات المرورية', icon: CarFront, group: 'config' },
+  { id: 'map_rider', label: 'Map Rider Calculations', labelAr: 'تعيين حسابات المندوبين', icon: ArrowRightLeft, group: 'config' },
   { id: 'import', label: 'Monthly Import', labelAr: 'الاستيراد الشهري', icon: Upload, group: 'config' },
   { id: 'company', label: 'Company Branding', labelAr: 'هوية الشركة', icon: Building2, group: 'config' },
   { id: 'audit', label: 'Audit Logs', labelAr: 'سجل التدقيق', icon: ScrollText, group: 'config' },
@@ -147,6 +157,7 @@ export default function Home() {
           {activeTab === 'rules' && <RulesControlCenter />}
           {activeTab === 'payslips' && <PayslipsView runId={runId} />}
           {activeTab === 'traffic' && <TrafficViolationsView />}
+          {activeTab === 'map_rider' && <MapRiderPage />}
           {activeTab === 'import' && <ImportView onImported={(id) => { setRunId(id); setActiveTab('dashboard') }} />}
           {activeTab === 'exceptions' && <ExceptionsView runId={runId} />}
           {activeTab === 'audit' && <AuditLogsView />}

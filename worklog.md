@@ -219,3 +219,55 @@ Stage Summary:
 - When fully paid, installment status auto-marks as 'completed' (no further deduction)
 - UI shows installment progress in the violations table (Paid: X / Y · N months left)
 - Payslips show installment info clearly: Mode column + This Month column
+
+---
+Task ID: map-rider-calculations-module
+Agent: main
+Task: Build production-ready Next.js feature to map calculation columns from Rider LVL source file into RLVL template structure, preserving identity/bank fields
+
+Work Log:
+- Created API route: src/app/api/finance/map-rider-calculations/route.ts
+  * POST handler accepts multipart/form-data with templateFile + sourceFile
+  * runtime = 'nodejs', dynamic = 'force-dynamic'
+  * Uses xlsx (SheetJS) library (already in package.json)
+  * Validates: both files exist, both .xlsx, template has 'RLVL' sheet, source has 'Rirder LVL' sheet
+  * Validates: rider ID columns exist (template: 'rider_id - معرف المندوب', source: 'معرف المندوب - rider_id')
+  * Validates: all 15 source calculation columns exist (returns list of missing columns)
+  * Maps calculation columns by rider_id (NOT by row position)
+  * Preserves identity columns from template: Beneficiary, Bank, IBAN
+  * Sets 2 columns to zero (acceptance_rate_penalties, contact_rate_penalties — no source equivalent)
+  * Preserves template column order in output
+  * Rider ordering: template riders first (in template order), then source-only riders appended at end
+  * Template-only riders: kept in output, identity preserved, calculation values set to 0
+  * Generates 3 sheets in output workbook:
+    1. RLVL_Mapped — exact template column order, mapped values
+    2. Validation — field-level totals comparison (Rider_LVL_total vs Mapped_RLVL_total, Difference, Status PASS/FAIL)
+    3. Rider_Validation — rider_id, exists_in_template, exists_in_source, action
+  * All financial values formatted to 2 decimal places in validation
+  * Returns binary .xlsx with proper Content-Type and Content-Disposition headers
+  * All errors return bilingual (English + Arabic) messages
+- Created client page: src/app/finance/map-rider/page.tsx
+  * Professional bilingual (Arabic + English) UI
+  * Two file inputs: Template (June/RLVL) and Source (July/Rirder LVL)
+  * "Map Calculation Columns & Download" button with loading state
+  * Validates file extensions client-side before upload
+  * Auto-downloads output .xlsx on success
+  * Shows clear error messages (bilingual)
+  * Info card explaining how it works
+  * Reference card showing all mapped columns
+  * Uses Tailwind CSS only
+- Added to sidebar navigation: src/app/page.tsx
+  * New tab "Map Rider Calculations · تعيين حسابات المندوبين" with ArrowRightLeft icon
+  * Positioned BEFORE "Monthly Import" in the Configuration section
+  * Uses next/dynamic to lazy-load the page (avoids pulling xlsx into main bundle)
+- Verified build succeeds: both /api/finance/map-rider-calculations and /finance/map-rider routes registered
+
+Stage Summary:
+- New module "Map Rider Calculations" added before Monthly Import in sidebar
+- Production-ready: strong typing, validation, error handling, bilingual UI
+- API: POST /api/finance/map-rider-calculations accepts 2 .xlsx files, returns mapped .xlsx
+- Page: /finance/map-rider with bilingual UI, file upload, auto-download
+- Output: RLVL_calculation_columns_mapped.xlsx with 3 sheets (RLVL_Mapped, Validation, Rider_Validation)
+- Identity preservation: Beneficiary, Bank, IBAN never overwritten
+- Zero columns: acceptance_rate_penalties, contact_rate_penalties
+- Mapping by rider_id (not row position) — handles template-only, source-only, and matched riders
