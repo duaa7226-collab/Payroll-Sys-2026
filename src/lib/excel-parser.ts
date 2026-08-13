@@ -71,10 +71,14 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
   if (!rlvlSheetName) {
     throw new Error('RLVL sheet not found. Required sheet missing.')
   }
-  // Find FTR Cost sheet
-  const ftrSheetName = wb.SheetNames.find(n => n.toLowerCase().includes('ftr'))
+  // Find FTR Cost sheet — OPTIONAL (warn but don't fail if missing)
+  // Match: contains 'ftr' OR contains 'cost' OR starts with 'ftr cost'
+  const ftrSheetName = wb.SheetNames.find(n => {
+    const lower = n.toLowerCase()
+    return lower.includes('ftr') || lower.includes('cost')
+  })
   if (!ftrSheetName) {
-    throw new Error('FTR Cost sheet not found. Required sheet missing.')
+    warnings.push('FTR Cost sheet not found — driver info (working days, hours, vehicle type) will use defaults from RLVL. To get full driver metrics, add an "FTR Cost" sheet to the workbook.')
   }
   // Find WR sheet (optional but recommended)
   const wrSheetName = wb.SheetNames.find(n => n.toLowerCase() === 'wr' || n.toLowerCase().includes('wr'))
@@ -109,8 +113,10 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
 
   if (!riderIdCol) throw new Error('Cannot find rider_id column in RLVL sheet')
 
-  // ====== Parse FTR Cost ======
-  const ftrRows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[ftrSheetName], { defval: null })
+  // ====== Parse FTR Cost (optional — gracefully handle missing sheet) ======
+  const ftrRows = ftrSheetName
+    ? XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[ftrSheetName], { defval: null })
+    : []
   const ftrHeaders = ftrRows.length > 0 ? Object.keys(ftrRows[0]) : []
   const ftrRiderIdCol = findCol(ftrHeaders, 'rider_id', 'riderid')
   const ftrNameCol = findCol(ftrHeaders, 'name')
@@ -200,8 +206,8 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
 
     const ftrRow = ftrByRider.get(riderId)
     let vehicleType = 'car'
-    let actualWorkingDays = 0
-    let fullyWorkingDays = 0
+    let actualWorkingDays = 30  // Default to full month when FTR Cost sheet is missing
+    let fullyWorkingDays = 30
     let workingHours = 0
     let totalMonthlyWorkingHours = 0
     let inactiveReason = 'Active'
@@ -212,9 +218,11 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
       if (workingHoursCol) workingHours = num(ftrRow[workingHoursCol])
       if (totalMonthlyHoursCol) totalMonthlyWorkingHours = num(ftrRow[totalMonthlyHoursCol])
       if (inactiveReasonCol) inactiveReason = String(ftrRow[inactiveReasonCol] ?? 'Active')
-    } else {
+    } else if (ftrSheetName) {
+      // FTR sheet exists but rider not in it — warn
       warnings.push(`Rider ${riderId} (${name}) found in RLVL but missing in FTR Cost sheet`)
     }
+    // If no FTR sheet at all, use defaults silently (warning already added at top)
 
     // Penalties map (raw, may be negative)
     const penalties: Record<string, number> = {

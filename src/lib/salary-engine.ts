@@ -197,10 +197,11 @@ export function calculateDriverSalary(
     ? missingOrders * deductionPerMissing
     : 0
 
-  // ====== Segment payment (bonus from Excel) ======
-  // segment_payment is a bonus paid to riders based on segment/distance work
-  // It's added to gross salary before penalties
-  const segmentPayment = raw.segmentPayment || 0
+  // ====== Segment payment — DEACTIVATED per user request ======
+  // Previously: this was a bonus paid to riders based on segment/distance work.
+  // Now: always 0 — segment payment feature is disabled.
+  const segmentPayment = 0
+  // (raw.segmentPayment is intentionally ignored)
 
   // ====== Custom bonuses (from Rules Control Center) ======
   const customBonuses = raw.customBonuses || []

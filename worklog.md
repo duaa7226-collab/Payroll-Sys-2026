@@ -271,3 +271,38 @@ Stage Summary:
 - Identity preservation: Beneficiary, Bank, IBAN never overwritten
 - Zero columns: acceptance_rate_penalties, contact_rate_penalties
 - Mapping by rider_id (not row position) — handles template-only, source-only, and matched riders
+
+---
+Task ID: fix-import-ftr-missing-deactivate-segment
+Agent: main
+Task: Fix "FTR Cost sheet not found" import error + deactivate segment payment feature
+
+Work Log:
+- Issue 1: Import failed with "FTR Cost sheet not found. Required sheet missing."
+  * Root cause: excel-parser.ts required FTR Cost sheet, threw error if missing
+  * This broke imports of files from the Map Rider Calculations module (which only has RLVL_Mapped sheet)
+  * Fix: Made FTR Cost sheet OPTIONAL in src/lib/excel-parser.ts:
+    - Changed from throw to warning: "FTR Cost sheet not found — driver info will use defaults"
+    - Broadened sheet name matching: now matches 'ftr' OR 'cost' (case-insensitive)
+    - ftrRows now empty array when sheet missing (instead of throwing)
+    - Default actualWorkingDays = 30 (full month) when FTR sheet missing
+    - Default fullyWorkingDays = 30 when FTR sheet missing
+    - Only warns "rider missing in FTR" when FTR sheet exists but rider not in it
+- Issue 2: Deactivate Segment Payment feature
+  * Root cause: segmentPayment was being added to gross salary in salary-engine.ts
+  * Fix: In src/lib/salary-engine.ts:
+    - Changed `const segmentPayment = raw.segmentPayment || 0` → `const segmentPayment = 0`
+    - Added comment: "DEACTIVATED per user request — segment payment feature is disabled"
+    - All gross salary calculations now exclude segmentPayment (since it's always 0)
+  * Payslip PDF and on-screen preview already use `(result.segmentPayment || 0) > 0` checks
+    - When segmentPayment is 0, the row is automatically hidden from payslips
+    - No UI changes needed
+- Verified build succeeds
+- Triggered recalculation for latest payroll run (August 2026)
+  * 9 drivers recalculated successfully
+  * totalGross: 16,370.33 · totalNet: 13,382.02 · totalTraffic: 0
+
+Stage Summary:
+- Import no longer fails when FTR Cost sheet is missing (uses sensible defaults)
+- Segment payment is fully deactivated (always 0, hidden from payslips)
+- Existing results recalculated to reflect the deactivation
