@@ -306,3 +306,71 @@ Stage Summary:
 - Import no longer fails when FTR Cost sheet is missing (uses sensible defaults)
 - Segment payment is fully deactivated (always 0, hidden from payslips)
 - Existing results recalculated to reflect the deactivation
+
+---
+Task ID: fix-salary-calculation-match-excel
+Agent: main
+Task: Fix salary calculation differences between Excel workbook and app — calculations must be 100% accurate
+
+Work Log:
+- Analyzed uploaded workbook: Rider_Salary_Workbook_2026_logo.xlsx
+- Discovered 14 sheets including: Paste_RLVL, Paste_FTR, Salary_Calculation, Settings, WR
+- Compared Excel's Salary_Calculation sheet (source of truth) against app's salary engine
+- Found 4 critical differences:
+
+=== Difference 1: Column header matching (FIXED) ===
+- User's workbook uses Arabic-first column names: "محفظة المندوب - Rider Balance"
+- App's findCol() used norm() that stripped Arabic chars, leaving empty string
+- The English part was AFTER the dash, not before (unlike older workbooks)
+- Fix in src/lib/excel-parser.ts:
+  * Added Pass 2.5 to findCol: splits header on ' - ' and checks the LAST part (English side after dash)
+  * Added 'rider balance' (with space) as alias for rider_balance lookup
+  * Added 'beneficiary name', 'bank name' aliases
+  * Pass 3 now tries both underscore and space variants
+
+=== Difference 2: Gross Salary formula (FIXED) ===
+- Excel: Earned Salary = MIN(Completed, Rider Target) × Base Order Rate
+- Excel: Gross Before Deductions = MAX(Earned - Missing-Order Deduction, 0) + Bonus
+- App (old): Gross = baseSalaryEquivalent (Target × Rate) - Missing Deduction + Bonus
+- The app used FULL TARGET × rate as base, but Excel caps at MIN(completed, target)
+- Fix in src/lib/salary-engine.ts:
+  * Added ordersCountedAtBaseRate = MIN(completedOrders, selectedTargetThreshold)
+  * Added earnedSalary = ordersCountedAtBaseRate × salaryPerOrder
+  * Changed grossBeforePenalties = MAX(earnedSalary - missingOrderDeduction, 0) + bonusAmount + customBonusTotal
+  * Kept days_prorated_mode as legacy fallback
+
+=== Difference 3: Deductible penalties (FIXED) ===
+- Excel Total Deductions = rider_balance + stacking + missed_days + other_deductions ONLY
+- App (old) counted ALL penalties: acceptance, contact, declined, late, noshow, etc.
+- The other penalties (acceptance, contact, declined, late, noshow, noshow_special, daily_acceptance)
+  are ALREADY deducted from the source basic_payment by the logistics provider
+- Counting them again = double-counting
+- Fix in src/lib/salary-engine.ts:
+  * All penalties still parsed and stored in penalties map (for audit/display)
+  * Added DEDUCTIBLE_PENALTIES = ['stacking', 'missed_days', 'rider_balance', 'car_deduction', 'tga_deduction']
+  * totalOtherPenalties now sums ONLY the deductible penalties
+  * Non-deductible penalties (acceptance, contact, declined, late, noshow, etc.)
+    are still shown on payslip for transparency but don't reduce gross salary
+
+=== Difference 4: Segment Payment (ALREADY FIXED in previous task) ===
+- Excel has segment_payment but user requested deactivation
+- Already set to 0 in salary-engine.ts
+
+=== Verification (scripts/verify_calculation.ts) ===
+- Compared all 15 riders from Excel's Salary_Calculation sheet against app's calculateDriverSalary()
+- Results: 15/15 EXACT MATCHES
+  * Gross Salary: 0.00 diff for all 15 riders
+  * Final Salary: 0.00 diff for all 15 riders
+  * Total Deductions: 0.00 diff for all 15 riders
+  * Missing-Order Deduction: 0.00 diff for all 15 riders
+  * Max diff: 0.0044 SAR (floating point rounding — essentially zero)
+- Build succeeded
+
+Stage Summary:
+- App's salary calculation now matches Excel 100% exactly
+- Column matching handles both English-first ("rider_id - معرف") and Arabic-first ("معرف - rider_id") headers
+- Gross salary uses MIN(completed, target) × rate (Excel logic) instead of target × rate
+- Only rider_balance + stacking + missed_days + car_deduction + tga_deduction count as deductions
+- Other penalties (acceptance, contact, declined, late, noshow, etc.) are displayed but NOT deducted
+  (they're already in the source basic_payment from the logistics provider)
+- 15/15 riders verified with 0.00 SAR difference

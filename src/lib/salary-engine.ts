@@ -212,39 +212,52 @@ export function calculateDriverSalary(
   // For installment deductions, use monthlyDeduction; for one-time, use full amount
   const customDeductionTotal = customDeductions.reduce((a, b) => a + (b.monthlyDeduction || b.amount), 0)
 
-  // ====== Gross salary calculation per mode ======
-  let grossBeforePenalties = 0
+  // ====== Excel-matching calculation (Salary_Calculation sheet logic) ======
+  // Excel formula:
+  //   Earned Salary = MIN(Completed Orders, Rider Target Orders) × Base Order Rate
+  //   Gross Salary Before Deductions = MAX(Earned Salary - Missing-Order Deduction, 0) + Extra-Order Bonus
+  //
+  // This means: the rider only earns on the orders they actually completed (capped at target).
+  // Missing-order deduction then reduces that earned amount (floored at 0).
+
+  // Orders counted at base rate = MIN(Completed, Target) — Excel: "Orders Counted at Base Rate"
+  const ordersCountedAtBaseRate = Math.min(raw.completedOrders, selectedTargetThreshold)
+
+  // Earned Salary = Orders Counted × Base Order Rate — Excel: "Earned Salary"
+  const earnedSalary = ordersCountedAtBaseRate * salaryPerOrder
+
+  // Gross Before Deductions = MAX(Earned Salary - Missing-Order Deduction, 0) + Bonus + Custom Bonuses
+  let grossBeforePenalties = Math.max(earnedSalary - missingOrderDeduction, 0) + bonusAmount + customBonusTotal
+
+  // days_prorated_mode fallback (legacy — rarely used)
   if (salaryMode === 'days_prorated_mode') {
     if (raw.completedOrders >= selectedTargetThreshold) {
       grossBeforePenalties = adjustedBaseSalary + bonusAmount + segmentPayment + customBonusTotal
     } else {
-      grossBeforePenalties = adjustedBaseSalary - missingOrderDeduction + segmentPayment + customBonusTotal
+      grossBeforePenalties = Math.max(adjustedBaseSalary - missingOrderDeduction, 0) + segmentPayment + customBonusTotal
     }
-  } else if (salaryMode === 'orders_based_mode') {
-    if (ordersPolicy === 'strict_target_salary_policy') {
-      if (raw.completedOrders === selectedTargetThreshold) {
-        grossBeforePenalties = monthlyBaseSalary + segmentPayment + customBonusTotal
-      } else if (raw.completedOrders < selectedTargetThreshold) {
-        grossBeforePenalties = baseSalaryEquivalent - missingOrderDeduction + segmentPayment + customBonusTotal
-      } else {
-        grossBeforePenalties = monthlyBaseSalary + bonusAmount + segmentPayment + customBonusTotal
-      }
-    } else {
-      grossBeforePenalties = baseSalaryEquivalent + bonusAmount - missingOrderDeduction + segmentPayment + customBonusTotal
-    }
-  } else {
-    grossBeforePenalties = baseSalaryEquivalent + bonusAmount - missingOrderDeduction + segmentPayment + customBonusTotal
   }
 
-  // ====== Penalties — only enabled ones, normalize sign correctly ======
-  // Source values may be negative (e.g., stacking_deduction = -40). We want
-  // absolute amounts in the penalties map.
+  // ====== Penalties — only count per-rider deductions (matching Excel logic) ======
+  // Excel Salary_Calculation sheet counts ONLY these as deductions:
+  //   - rider_balance
+  //   - stacking_deduction
+  //   - missed_days_penalty
+  //   - other_deductions (car deduction, TGA, custom)
+  //
+  // The other penalties (acceptance, contact, declined, late, noshow, noshow_special,
+  // daily_acceptance) are ALREADY deducted from the source basic_payment by the
+  // logistics provider — counting them again would double-count.
+  //
+  // We still expose them in the penalties map for audit/display, but they are
+  // NOT added to totalOtherPenalties.
   function absIfEnabled(key: string, rawVal: number | undefined): number {
     if (!penToggles[key]) return 0
     if (rawVal === undefined || rawVal === null || isNaN(rawVal)) return 0
     return Math.abs(rawVal)
   }
 
+  // All penalties parsed (for display/audit) — but only DEDUCTIBLE ones count
   const penalties: Record<string, number> = {
     acceptance: absIfEnabled('acceptance', raw.penalties.acceptance_rate_penalties),
     contact: absIfEnabled('contact', raw.penalties.contact_rate_penalties),
@@ -260,7 +273,11 @@ export function calculateDriverSalary(
     tga_deduction: absIfEnabled('tga_deduction', raw.tgaDeduction),
   }
 
-  let totalOtherPenalties = Object.values(penalties).reduce((a, b) => a + b, 0)
+  // ====== Deductible penalties — only these reduce the rider's gross salary ======
+  // Matches Excel Salary_Calculation "Total Deductions" column:
+  //   rider_balance + stacking + missed_days + car_deduction + tga_deduction + custom_deductions
+  const DEDUCTIBLE_PENALTIES = ['stacking', 'missed_days', 'rider_balance', 'car_deduction', 'tga_deduction']
+  let totalOtherPenalties = DEDUCTIBLE_PENALTIES.reduce((sum, key) => sum + (penalties[key] || 0), 0)
   // Apply max allowed penalty if set
   if (penMaxAllowed > 0 && totalOtherPenalties > penMaxAllowed) {
     totalOtherPenalties = penMaxAllowed

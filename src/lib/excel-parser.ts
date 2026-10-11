@@ -45,10 +45,25 @@ function findCol(headers: string[], ...candidates: string[]): string | null {
     const found = normalized.find(h => h.norm.startsWith(c))
     if (found) return found.raw
   }
-  // Pass 3: fuzzy includes (last resort)
+  // Pass 2.5: For bilingual headers like "محفظة المندوب - Rider Balance",
+  // the English side is AFTER the dash. Split on ' - ' and take the LAST part.
   for (const cand of candidates) {
-    const c = cand.toLowerCase()
-    const found = normalized.find(h => h.raw.toLowerCase().includes(c))
+    const c = cand.toLowerCase().replace(/\s+/g, '_')
+    const found = normalized.find(h => {
+      const parts = h.raw.split(' - ')
+      const englishSide = parts[parts.length - 1].trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+      return englishSide === c || englishSide.startsWith(c)
+    })
+    if (found) return found.raw
+  }
+  // Pass 3: fuzzy includes — try underscore and space variants
+  for (const cand of candidates) {
+    const cUnderscore = cand.toLowerCase().replace(/\s+/g, '_')
+    const cSpace = cand.toLowerCase().replace(/_+/g, ' ')
+    const found = normalized.find(h => {
+      const raw = h.raw.toLowerCase()
+      return raw.includes(cUnderscore) || raw.includes(cSpace)
+    })
     if (found) return found.raw
   }
   return null
@@ -105,11 +120,11 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
   const distanceCol = findCol(rlvlHeaders, 'distance_payment')
   const missedDaysCol = findCol(rlvlHeaders, 'missed_days_penalty')
   const segmentCol = findCol(rlvlHeaders, 'segment_payment')
-  const riderBalanceCol = findCol(rlvlHeaders, 'rider_balance')
+  const riderBalanceCol = findCol(rlvlHeaders, 'rider_balance', 'rider balance', 'riderbalance')
   // RLVL may also contain per-driver banking columns (preferred source per user requirement)
-  const rlvlBeneficiaryCol = findCol(rlvlHeaders, 'beneficiary_name', 'beneficiary')
+  const rlvlBeneficiaryCol = findCol(rlvlHeaders, 'beneficiary_name', 'beneficiary', 'beneficiary name')
   const rlvlIbanCol = findCol(rlvlHeaders, 'iban')
-  const rlvlBankCol = findCol(rlvlHeaders, 'bank_name', 'bank')
+  const rlvlBankCol = findCol(rlvlHeaders, 'bank_name', 'bank', 'bank name')
 
   if (!riderIdCol) throw new Error('Cannot find rider_id column in RLVL sheet')
 
