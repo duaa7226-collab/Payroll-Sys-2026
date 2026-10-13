@@ -374,3 +374,51 @@ Stage Summary:
 - Other penalties (acceptance, contact, declined, late, noshow, etc.) are displayed but NOT deducted
   (they're already in the source basic_payment from the logistics provider)
 - 15/15 riders verified with 0.00 SAR difference
+
+---
+Task ID: fix-stacking-lost-on-bonus-activate
+Agent: main
+Task: Fix bug where stacking deduction disappears when user activates a new bonus (triggers recalculate)
+
+Work Log:
+- Root cause: KEY MISMATCH between stored penalties and salary engine input
+- The salary engine OUTPUT stores penalties with SHORT keys in penaltiesJson:
+  * stacking, missed_days, rider_balance, car_deduction, tga_deduction, etc.
+- The salary engine INPUT (RawDriverData.penalties) expects LONG keys:
+  * stacking_deduction, missed_days_penalty, no_show_penalty, etc.
+- The recalculate route (src/app/api/recalculate/route.ts) was passing
+  penaltiesJson directly as raw.penalties — but the short keys didn't match
+  the long keys the salary engine reads.
+- Result: every recalculate (triggered by adding bonus/deduction/rule change)
+  would read stacking_deduction → undefined → absIfEnabled returns 0 →
+  stacking deduction DISAPPEARED from the recalculated results.
+- Same applied to: missed_days, rider_balance, car_deduction, tga_deduction
+- Fix in src/app/api/recalculate/route.ts:
+  * Added mapping from stored short keys → long keys the salary engine expects:
+    stacking → stacking_deduction
+    missed_days → missed_days_penalty
+    acceptance → acceptance_rate_penalties
+    contact → contact_rate_penalties
+    declined → declined_penalties_day_logic
+    late → late_penalty
+    noshow → no_show_penalty
+    noshow_special → no_show_penalty_special_cities
+    daily_acceptance → daily_acceptance_rate_penalty
+    distance → distance_payment
+    segment → segment_payment
+  * car_deduction, tga_deduction, rider_balance now read from storedPenalties
+    (previously hardcoded to 0 or read from wrong key)
+- Wrote test script (scripts/test_recalc_fix.ts) to verify:
+  * Captures penalties BEFORE recalc
+  * Triggers recalc via API
+  * Captures penalties AFTER recalc
+  * Compares stacking values
+- Test results: 17/17 riders show stacking PRESERVED after recalc (0 lost)
+  ✅ All stacking values survived recalculation
+- Build succeeded
+
+Stage Summary:
+- Bug fixed: stacking deduction (and all other penalties) now survive recalculation
+- When user activates a new bonus, the stacking deduction stays intact
+- Key mapping added: short keys (stored) → long keys (salary engine input)
+- Verified with 17 riders — all penalties preserved after recalc

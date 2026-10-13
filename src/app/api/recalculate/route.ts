@@ -36,6 +36,24 @@ export async function POST(req: NextRequest) {
       const driver = await db.driver.findUnique({ where: { id: existing.driverId } })
       if (!driver) continue
 
+      // penaltiesJson stores SHORT keys (stacking, missed_days, rider_balance, etc.)
+      // but the salary engine expects LONG keys (stacking_deduction, missed_days_penalty, etc.)
+      // Map them back so penalties survive recalculation.
+      const storedPenalties = JSON.parse(existing.penaltiesJson || '{}')
+      const penalties = {
+        acceptance_rate_penalties: storedPenalties.acceptance ?? 0,
+        contact_rate_penalties: storedPenalties.contact ?? 0,
+        stacking_deduction: storedPenalties.stacking ?? 0,
+        declined_penalties_day_logic: storedPenalties.declined ?? 0,
+        late_penalty: storedPenalties.late ?? 0,
+        no_show_penalty: storedPenalties.noshow ?? 0,
+        no_show_penalty_special_cities: storedPenalties.noshow_special ?? 0,
+        daily_acceptance_rate_penalty: storedPenalties.daily_acceptance ?? 0,
+        distance_payment: storedPenalties.distance ?? 0,
+        missed_days_penalty: storedPenalties.missed_days ?? 0,
+        segment_payment: storedPenalties.segment ?? 0,
+      }
+
       const raw = {
         riderId: existing.riderId,
         name: existing.driverName,
@@ -49,10 +67,10 @@ export async function POST(req: NextRequest) {
         fullyWorkingDays: existing.fullyWorkingDays,
         workingHours: existing.workingHours,
         totalMonthlyWorkingHours: existing.totalMonthlyWorkingHours,
-        penalties: JSON.parse(existing.penaltiesJson || '{}'),
-        carDeduction: 0,
-        tgaDeduction: 0,
-        riderBalance: JSON.parse(existing.penaltiesJson || '{}').rider_balance || 0,
+        penalties,
+        carDeduction: storedPenalties.car_deduction ?? 0,
+        tgaDeduction: storedPenalties.tga_deduction ?? 0,
+        riderBalance: storedPenalties.rider_balance ?? 0,
         segmentPayment: existing.segmentPayment || 0,
         trafficViolationsTotal: trafficByRider.get(existing.riderId)?.total ?? 0,
         manualBonuses: (manualByRider.get(existing.riderId)?.bonuses ?? []).map(b => ({ title: b.title, amount: b.amount })),
