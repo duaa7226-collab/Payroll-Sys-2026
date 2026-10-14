@@ -271,6 +271,9 @@ export function calculateDriverSalary(
     rider_balance: absIfEnabled('rider_balance', raw.riderBalance),
     car_deduction: absIfEnabled('car_deduction', raw.carDeduction),
     tga_deduction: absIfEnabled('tga_deduction', raw.tgaDeduction),
+    // Store distance + segment in penaltiesJson so the Income vs Expenses sync can read them
+    distance: Math.abs(raw.penalties.distance_payment || 0),
+    segment: Math.abs(raw.segmentPayment || 0),
   }
 
   // ====== Deductible penalties — only these reduce the rider's gross salary ======
