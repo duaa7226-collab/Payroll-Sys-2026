@@ -761,3 +761,43 @@ Stage Summary:
 - Import API saves uploaded files to disk for future reference
 - User needs to RE-IMPORT the Excel to get the new data flowing through
 - Formula verified: basic + distance + segment - all_penalties = total income (8925.42 for rider 4648308)
+
+---
+Task ID: resync-income-records-fix
+Agent: main
+Task: Fix IncomeRecords that had old data (distance=0, segment=0) by re-syncing from DriverResult records
+
+Work Log:
+- Root cause: IncomeRecords were synced BEFORE the salary engine started storing distance/segment in penaltiesJson
+  * The old sync read penaltiesJson.distance = undefined → 0
+  * The old sync read penaltiesJson.segment = undefined → 0
+  * IncomeRecord.totalIncome was calculated with distance=0 and segment=0 (WRONG)
+- After re-importing the Excel (which stored distance/segment in penaltiesJson), the DriverResult records had correct data
+  BUT the IncomeRecords still had the old cached values
+
+Fix applied:
+1. Wrote scripts/resync_income.ts — re-syncs ALL IncomeRecords from the latest payroll run's DriverResult records
+   * Reads penaltiesJson (now has distance + segment)
+   * Maps to IncomeRecord fields: distancePayment = penalties.distance, segmentPayment = penalties.segment
+   * Recalculates totalIncome and totalPenalties using the new formula
+   * Updates driver count
+2. Ran the script — updated 17 IncomeRecords
+3. Verified rider 4648308:
+   - basicPayment: 4576 ✅
+   - distancePayment: 3885.1945 ✅
+   - segmentPayment: 1001 ✅
+   - stackingDeduction: 188 ✅
+   - riderBalance: 348.77 ✅
+   - totalPenalties: 536.77 (188 + 348.77) ✅
+   - totalIncome: 8925.4245 ✅ (EXACT MATCH with user's expected value)
+4. Verified via dashboard API — all values correct
+   - Total income: 104,317.58
+   - Total expenses: 108,755.00
+   - Net profit: -4,437.42 (loss due to high shared expenses)
+
+Stage Summary:
+- IncomeRecords re-synced with correct distance + segment values
+- Calculation formula verified: basic + distance + segment - all penalties (incl. rider balance) = total income
+- Rider 4648308: 4576 + 3885.1945 + 1001 - 536.77 = 8925.4245 (100% accurate)
+- Dashboard now shows correct totals for all 17 drivers
+- The "Sync from Payroll Import" button will also work correctly for future months
