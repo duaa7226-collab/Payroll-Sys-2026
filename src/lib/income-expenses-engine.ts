@@ -151,17 +151,38 @@ export async function calculateDriverExpenses(
   }
 }
 
-// Get active driver count for a month (from DriverCount table, fallback to count of income records)
+// Get active driver count for a month
+// Priority: 1) DriverCount table (manual/auto-synced), 2) count of IncomeRecord rider IDs, 3) payroll run driver count
 export async function getActiveDriverCount(month: string): Promise<number> {
+  // 1. Check DriverCount table
   const dc = await db.driverCount.findUnique({ where: { month } })
   if (dc && dc.activeDriverCount > 0) return dc.activeDriverCount
-  // Fallback: count distinct rider IDs from income records that month
+
+  // 2. Count distinct rider IDs from income records that month
   const records = await db.incomeRecord.findMany({
     where: { month },
     select: { riderId: true },
     distinct: ['riderId'],
   })
-  return records.length
+  if (records.length > 0) return records.length
+
+  // 3. Fallback: count drivers from the matching payroll run
+  const label = monthToLabel(month)
+  const run = await db.payrollRun.findFirst({
+    where: { payrollMonth: { contains: label.split(' ')[0] } },
+    orderBy: { createdAt: 'desc' },
+    include: { _count: { select: { results: true } } },
+  })
+  if (run && run._count?.results > 0) return run._count.results
+
+  return 0
+}
+
+// Helper: convert "2026-08" → "August 2026" (PayrollRun.payrollMonth format)
+function monthToLabel(month: string): string {
+  const [y, m] = month.split('-')
+  const date = new Date(parseInt(y), parseInt(m) - 1, 1)
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
 // Calculate full result for a driver in a month

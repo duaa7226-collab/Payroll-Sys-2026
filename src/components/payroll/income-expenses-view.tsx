@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   TrendingUp, TrendingDown, Wallet, Users, DollarSign, ArrowUpRight, ArrowDownRight,
   Plus, Upload, Settings, Search, Download, Pencil, Trash2, AlertCircle,
-  CheckCircle2, Building2, Car, FileSpreadsheet, RefreshCw, Calculator, ChevronDown, ChevronRight
+  CheckCircle2, Building2, Car, FileSpreadsheet, RefreshCw, Calculator, ChevronDown, ChevronRight,
+  RefreshCcw, Link2
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -36,6 +37,61 @@ export function IncomeExpensesView() {
   const [driverCountOpen, setDriverCountOpen] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [detailDriver, setDetailDriver] = useState<any>(null)
+  const [syncing, setSyncing] = useState(false)
+
+  const handleSyncFromPayroll = async () => {
+    setSyncing(true)
+    try {
+      // First check if a payroll run exists for this month
+      const checkResp = await fetch(`/api/income-expenses/sync-from-payroll?month=${month}`)
+      const check = await checkResp.json()
+      if (!check.found) {
+        toast.error(`No payroll run found for ${check.label}. Import the monthly Excel first (Monthly Import tab).`)
+        return
+      }
+
+      // Confirm if existing records will be overwritten
+      if (check.existingIncomeCount > 0) {
+        if (!confirm(`This will overwrite ${check.existingIncomeCount} existing income record(s) for ${month} with data from ${check.payrollRun.payrollMonth} (${check.payrollRun.driverCount} drivers). Continue?`)) {
+          return
+        }
+      }
+
+      // Sync
+      const resp = await fetch('/api/income-expenses/sync-from-payroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, forceUpdate: check.existingIncomeCount > 0 }),
+      })
+      const data = await resp.json()
+      if (resp.ok) {
+        toast.success(`Synced ${data.imported + data.updated} drivers from ${data.payrollRun.payrollMonth}. Driver count set to ${data.driverCount}.`)
+        reload()
+      } else if (resp.status === 409 && data.existingCount) {
+        // Duplicate — ask to force update
+        if (confirm(`${data.message}\n\nOverwrite with payroll data?`)) {
+          const resp2 = await fetch('/api/income-expenses/sync-from-payroll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ month, forceUpdate: true }),
+          })
+          const data2 = await resp2.json()
+          if (resp2.ok) {
+            toast.success(`Synced ${data2.imported + data2.updated} drivers. Driver count set to ${data2.driverCount}.`)
+            reload()
+          } else {
+            toast.error(data2.error || 'Sync failed')
+          }
+        }
+      } else {
+        toast.error(data.error || data.message || 'Sync failed')
+      }
+    } catch (e: any) {
+      toast.error('Sync failed: ' + e.message)
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const reload = useCallback(() => {
     setLoading(true)
@@ -80,7 +136,11 @@ export function IncomeExpensesView() {
             Import monthly income from delivery companies, track expenses, and calculate net profit per driver.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={handleSyncFromPayroll} disabled={syncing}>
+            {syncing ? <RefreshCcw className="mr-1 h-4 w-4 animate-spin" /> : <Link2 className="mr-1 h-4 w-4" />}
+            {syncing ? 'Syncing...' : 'Sync from Payroll Import'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setCategoriesOpen(true)}>
             <Settings className="mr-1 h-4 w-4" /> Categories
           </Button>
@@ -176,7 +236,16 @@ export function IncomeExpensesView() {
         <Card className="card-glow">
           <CardContent className="py-12 text-center text-muted-foreground">
             <FileSpreadsheet className="mx-auto h-10 w-10 opacity-40 mb-2" />
-            No income data for {month}. Click "Import Income" to upload an Excel file.
+            <div className="font-medium">No income data for {month}</div>
+            <div className="text-xs mt-2 mb-4">
+              Click <strong>"Sync from Payroll Import"</strong> above to auto-populate from the monthly Excel you imported,
+              <br />
+              or click <strong>"Import Income"</strong> to upload a separate Excel/CSV file.
+            </div>
+            <Button size="sm" onClick={handleSyncFromPayroll} disabled={syncing}>
+              {syncing ? <RefreshCcw className="mr-1 h-4 w-4 animate-spin" /> : <Link2 className="mr-1 h-4 w-4" />}
+              {syncing ? 'Syncing...' : 'Sync from Payroll Import'}
+            </Button>
           </CardContent>
         </Card>
       ) : tab === 'summary' ? (

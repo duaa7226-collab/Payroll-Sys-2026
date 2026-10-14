@@ -528,3 +528,75 @@ Stage Summary:
 - All amounts in SAR, displayed to 2 decimal places
 - Validation: duplicate detection, missing rider IDs, invalid amounts, division by zero prevention
 - Audit logging on all create/update/import actions
+
+---
+Task ID: sync-income-from-payroll
+Agent: main
+Task: Make Income vs Expenses module sync from Monthly Import payroll data — driver count and income must match the Excel that calculates salaries
+
+Work Log:
+=== 1. New API: /api/income-expenses/sync-from-payroll ===
+- POST: Syncs income data from DriverResult records (created by Monthly Import) into IncomeRecord records
+  * Input: { month: "2026-08", companyName?: "HungerStation", forceUpdate?: boolean }
+  * Converts "2026-08" → "August 2026" to find matching PayrollRun
+  * For each DriverResult, creates/updates an IncomeRecord:
+    - basicPayment = DriverResult.uploadedBasicPayment (the Excel's basic_payment column)
+    - distancePayment = penaltiesJson.distance
+    - segmentPayment = penaltiesJson.segment
+    - stackingDeduction = penaltiesJson.stacking
+    - acceptancePenalty = penaltiesJson.acceptance
+    - contactPenalty = penaltiesJson.contact
+    - declinedPenalty = penaltiesJson.declined
+    - latePenalty = penaltiesJson.late
+    - noShowPenalty = penaltiesJson.noshow
+    - noShowSpecialPenalty = penaltiesJson.noshow_special
+    - dailyAcceptancePenalty = penaltiesJson.daily_acceptance
+    - missedDaysPenalty = penaltiesJson.missed_days
+    - riderBalance = penaltiesJson.rider_balance
+  * Sets DriverCount for that month = number of drivers in payroll run
+  * Duplicate detection: requires forceUpdate if records already exist
+  * Audit log entry on sync
+- GET: Checks if a payroll run exists for the month
+  * Returns: found, payrollRun (id, month, fileName, driverCount), existingIncomeCount, existingCompanies
+  * Used by UI to show sync button + confirm overwrite
+
+=== 2. Updated getActiveDriverCount in income-expenses-engine.ts ===
+- 3-tier fallback for driver count:
+  1. DriverCount table (manual or auto-synced)
+  2. Count of distinct rider IDs from IncomeRecord that month
+  3. Count of drivers from matching PayrollRun (fallback)
+- This means: even without syncing, the driver count defaults to the payroll run's driver count
+
+=== 3. UI: "Sync from Payroll Import" button ===
+- Added button in header (next to Categories, Driver Count, Add Expense, Import Income)
+- Button calls handleSyncFromPayroll():
+  1. Checks if payroll run exists for the month (GET endpoint)
+  2. If not found: shows error "Import the monthly Excel first"
+  3. If existing income records: confirms overwrite
+  4. Calls POST sync endpoint with forceUpdate
+  5. Shows toast: "Synced X drivers from {month}. Driver count set to {N}."
+  6. Reloads dashboard
+- Added same button to empty state (when no income data for month)
+- Loading state: spinner + "Syncing..." text
+- Icons: Link2 (sync), RefreshCcw (spinning)
+
+=== 4. Flow ===
+1. User imports monthly Excel via "Monthly Import" tab → creates PayrollRun + DriverResult records
+2. User opens "Income vs Expenses" tab → selects month
+3. If no income data: empty state shows "Sync from Payroll Import" button
+4. User clicks button → syncs all income from payroll run into IncomeRecords
+5. Driver count auto-set from payroll run driver count
+6. Income numbers match the Excel exactly (basic_payment, penalties, rider_balance from RLVL + FTR Cost)
+7. Expenses can then be added manually, shared allocation uses the synced driver count
+
+=== 5. Build verified ===
+- Build succeeded
+- New API route registered: /api/income-expenses/sync-from-payroll
+
+Stage Summary:
+- Income vs Expenses module now syncs from Monthly Import payroll data
+- Driver count defaults to payroll run's driver count (3-tier fallback)
+- Income data (basic_payment, distance, segment, all penalties, rider_balance) copied from DriverResult records
+- One-click sync button in header + empty state
+- Historical months preserved — only the selected month is synced
+- Numbers match the Excel that calculates salaries (RLVL + FTR Cost)
