@@ -640,3 +640,43 @@ Fixes applied:
    * Wrapped in try/catch as final safety net
 
 Build verified — succeeded.
+
+---
+Task ID: fix-prisma-client-not-regenerated
+Agent: main
+Task: Fix "No payroll run found" error caused by Prisma client not knowing about new models
+
+Work Log:
+- Root cause: After adding new Prisma models (IncomeRecord, Expense, ExpenseCategory, DriverCount, CustomIncomeField),
+  the Prisma client was regenerated but the dev server was still using the OLD cached client.
+- The old client didn't know about the new models, so `db.incomeRecord`, `db.expense`, etc. were undefined.
+- When the sync API tried to call `db.driverResult.findMany()`, it crashed with:
+  "Cannot read properties of undefined (reading 'findMany')"
+- This caused the GET /api/income-expenses/sync-from-payroll endpoint to return a 500 error
+- The client-side error handler showed "No payroll run found for 2026-10" because check.found was falsy
+
+Fix applied:
+1. Ran `npx prisma generate` to regenerate the Prisma client with all new models
+2. Killed the old dev server (which had the cached old client)
+3. Started a fresh dev server that loads the new Prisma client
+4. Verified the API works: GET /api/income-expenses/sync-from-payroll?month=2026-10 now returns:
+   {
+     "found": true,
+     "month": "2026-10",
+     "label": "October 2026",
+     "payrollRun": {
+       "id": "cmv7zy4so0033qdungi68fncg",
+       "payrollMonth": "October 2026",
+       "fileName": "nokhaba_tatweer_ftr_Invoice Issue Sep 2026.xlsx",
+       "driverCount": 17
+     },
+     "existingIncomeCount": 0,
+     "existingCompanies": []
+   }
+5. Server is now running on port 3000
+
+Stage Summary:
+- Prisma client regenerated with all new models
+- Dev server restarted to load new client
+- Sync from Payroll Import button now works — finds October 2026 payroll run (17 drivers)
+- The "Sync from Payroll Import" button will now successfully sync income data
