@@ -600,3 +600,43 @@ Stage Summary:
 - One-click sync button in header + empty state
 - Historical months preserved — only the selected month is synced
 - Numbers match the Excel that calculates salaries (RLVL + FTR Cost)
+
+---
+Task ID: fix-month-undefined-sync-error
+Agent: main
+Task: Fix "No payroll run found for undefined" error when clicking Sync from Payroll Import
+
+Work Log:
+- Root cause: The Month filter used a <Select> component that lost its value when:
+  1. The months array (from dashboard API) was empty (no income data yet)
+  2. The selected month wasn't in the months list
+  3. Radix Select cleared the value to undefined
+- When handleSyncFromPayroll() ran with month=undefined, the GET request sent ?month=undefined
+- Server-side monthToLabel("undefined") produced garbage, causing the confusing error
+
+Fixes applied:
+1. Client-side guard in handleSyncFromPayroll():
+   * Added regex validation: /^\d{4}-\d{2}$/.test(month)
+   * Shows clear error: "Please select a valid month first (format: YYYY-MM)"
+   * Uses encodeURIComponent(month) in the URL
+   * Falls back to check.label || month in the error message
+
+2. Replaced Month <Select> with <Input type="month">:
+   * Always shows a value (HTML5 month picker)
+   * User can type or pick any month — no dependency on months array
+   * The months array is still used for display elsewhere (if needed)
+
+3. Server-side validation in POST /api/income-expenses/sync-from-payroll:
+   * Added: if (!month || typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month))
+   * Returns 400 with clear message: "Month must be in YYYY-MM format"
+
+4. Server-side validation in GET /api/income-expenses/sync-from-payroll:
+   * Added same regex validation
+   * Returns found: false with descriptive label instead of crashing
+
+5. Made monthToLabel() robust:
+   * Validates input format before parsing
+   * Returns the raw month string if parsing fails (instead of "Invalid Date")
+   * Wrapped in try/catch as final safety net
+
+Build verified — succeeded.

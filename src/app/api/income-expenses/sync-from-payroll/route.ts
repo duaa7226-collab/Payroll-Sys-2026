@@ -7,9 +7,17 @@ export const dynamic = 'force-dynamic'
 
 // Helper: convert "2026-08" → "August 2026" (PayrollRun.payrollMonth format)
 function monthToLabel(month: string): string {
-  const [y, m] = month.split('-')
-  const date = new Date(parseInt(y), parseInt(m) - 1, 1)
-  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  if (!month || typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month)) {
+    return month || 'undefined'
+  }
+  try {
+    const [y, m] = month.split('-')
+    const date = new Date(parseInt(y), parseInt(m) - 1, 1)
+    if (isNaN(date.getTime())) return month
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  } catch {
+    return month
+  }
 }
 
 // Helper: try to find a payroll run matching the given month
@@ -41,8 +49,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { month, companyName, forceUpdate } = body
 
-    if (!month) {
-      return NextResponse.json({ error: 'month required (e.g. "2026-08")' }, { status: 400 })
+    if (!month || typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month)) {
+      return NextResponse.json({
+        error: 'Invalid month',
+        message: 'Month must be in YYYY-MM format (e.g. "2026-08").',
+      }, { status: 400 })
     }
 
     // Find the matching payroll run
@@ -184,7 +195,14 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const month = searchParams.get('month')
-    if (!month) return NextResponse.json({ error: 'month required' }, { status: 400 })
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return NextResponse.json({
+        found: false,
+        error: 'Invalid month format. Must be YYYY-MM (e.g. 2026-08).',
+        month: month || '',
+        label: month || 'undefined',
+      }, { status: 200 })
+    }
 
     const run = await findPayrollRunForMonth(month)
     if (!run) {

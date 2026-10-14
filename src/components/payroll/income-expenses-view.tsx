@@ -40,13 +40,17 @@ export function IncomeExpensesView() {
   const [syncing, setSyncing] = useState(false)
 
   const handleSyncFromPayroll = async () => {
+    if (!month || month === 'undefined' || !/^\d{4}-\d{2}$/.test(month)) {
+      toast.error('Please select a valid month first (format: YYYY-MM)')
+      return
+    }
     setSyncing(true)
     try {
       // First check if a payroll run exists for this month
-      const checkResp = await fetch(`/api/income-expenses/sync-from-payroll?month=${month}`)
+      const checkResp = await fetch(`/api/income-expenses/sync-from-payroll?month=${encodeURIComponent(month)}`)
       const check = await checkResp.json()
       if (!check.found) {
-        toast.error(`No payroll run found for ${check.label}. Import the monthly Excel first (Monthly Import tab).`)
+        toast.error(`No payroll run found for ${check.label || month}. Import the monthly Excel first (Monthly Import tab).`)
         return
       }
 
@@ -161,19 +165,12 @@ export function IncomeExpensesView() {
         <CardContent className="flex flex-wrap items-end gap-3 p-3">
           <div>
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Month</Label>
-            <Select value={month} onValueChange={setMonth}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.length > 0 ? months.map(m => (
-                  <SelectItem key={m} value={m}>{m}</SelectItem>
-                )) : (
-                  <SelectItem value={month}>{month} (no data yet)</SelectItem>
-                )}
-                {/* Allow free month via input */}
-              </SelectContent>
-            </Select>
+            <Input
+              type="month"
+              value={month || ''}
+              onChange={(e) => setMonth(e.target.value)}
+              className="w-[160px]"
+            />
           </div>
           <div>
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Delivery Company</Label>
