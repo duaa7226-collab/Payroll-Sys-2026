@@ -117,12 +117,12 @@ export function IncomeExpensesView() {
           </div>
           <div>
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Delivery Company</Label>
-            <Select value={company} onValueChange={setCompany}>
+            <Select value={company || '__all'} onValueChange={(v) => setCompany(v === '__all' ? '' : v)}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All companies" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All companies</SelectItem>
+                <SelectItem value="__all">All companies</SelectItem>
                 {companies.map(c => (
                   <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
