@@ -29,6 +29,9 @@ export interface DriverNetResult {
 }
 
 // Calculate income from an IncomeRecord row
+// Formula: Total income = basic_payment + distance_payment + segment_payment
+//                       - ALL penalties (including stacking, rider_balance)
+// Rider Balance is treated as a DEDUCTION (penalty), not a signed add.
 export function calculateIncome(rec: {
   basicPayment: number
   distancePayment: number
@@ -45,6 +48,8 @@ export function calculateIncome(rec: {
   riderBalance: number
   customFieldsJson?: string | null
 }): IncomeCalc {
+  // All penalties are DEDUCTED from gross income (absolute values)
+  // Rider Balance is ALSO a deduction (per user spec — it's a wallet deduction)
   const totalPenalties =
     Math.abs(rec.acceptancePenalty) +
     Math.abs(rec.contactPenalty) +
@@ -54,7 +59,8 @@ export function calculateIncome(rec: {
     Math.abs(rec.noShowPenalty) +
     Math.abs(rec.noShowSpecialPenalty) +
     Math.abs(rec.dailyAcceptancePenalty) +
-    Math.abs(rec.missedDaysPenalty)
+    Math.abs(rec.missedDaysPenalty) +
+    Math.abs(rec.riderBalance)  // Rider Balance is a DEDUCTION, not income
 
   // Custom fields
   let customFieldsTotal = 0
@@ -68,13 +74,12 @@ export function calculateIncome(rec: {
     } catch {}
   }
 
-  // Total income = basic + distance + segment - penalties + riderBalance + customFields
+  // Total income = basic + distance + segment - all penalties (including rider balance) + customFields
   const totalIncome =
     rec.basicPayment +
     rec.distancePayment +
     rec.segmentPayment -
     totalPenalties +
-    rec.riderBalance +
     customFieldsTotal
 
   return {

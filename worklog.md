@@ -680,3 +680,42 @@ Stage Summary:
 - Dev server restarted to load new client
 - Sync from Payroll Import button now works — finds October 2026 payroll run (17 drivers)
 - The "Sync from Payroll Import" button will now successfully sync income data
+
+---
+Task ID: fix-income-calc-and-react-key-warning
+Agent: main
+Task: Fix React key warning + update income formula to deduct Rider Balance (not add it)
+
+Work Log:
+=== 1. React key warning fix ===
+- Root cause: `driverResults.map()` returned a `<>` fragment without a key
+- Fix: Changed `<>...</>` to `<Fragment key={d.id}>...</Fragment>`
+- Added `Fragment` to React imports
+- Removed redundant `key` props from inner `<tr>` elements
+
+=== 2. Income calculation formula fix ===
+- OLD formula: Total Income = basic + distance + segment - penalties + riderBalance
+  (Rider Balance was ADDED if positive, deducted if negative — WRONG)
+- NEW formula: Total Income = basic + distance + segment - ALL penalties (including rider balance)
+  (Rider Balance is ALWAYS a deduction — treated as a penalty)
+- Updated in src/lib/income-expenses-engine.ts calculateIncome():
+  * Added `Math.abs(rec.riderBalance)` to totalPenalties
+  * Removed `+ rec.riderBalance` from totalIncome formula
+  * Added comment: "Rider Balance is treated as a DEDUCTION (penalty), not a signed add"
+
+=== 3. UI display updates ===
+- Updated table column "Rider Bal." to show as `-X.XX` (red, deduction)
+- Updated detail breakdown: "Total Penalties (incl. Stacking)" and "Rider Balance (deduction)" as separate rows, both red
+- Updated import preview calculation to match new formula
+- Updated import preview Rider Balance display to show as deduction
+- Updated driver detail dialog with same breakdown
+
+=== 4. Verification ===
+Test with rider 4648308 (user's example):
+- Basic: 4576 + Distance: 3885.19 + Segment: 1001 = 9462.19 (gross)
+- Stacking: 188 + Rider Balance: 348.77 = 536.77 (total penalties)
+- Total Income: 8925.42 (matches user's expected ~8926, diff is rounding)
+- Formula verified correct
+
+=== 5. Build verified ===
+- Build succeeded

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Fragment } from 'react'
 import {
   TrendingUp, TrendingDown, Wallet, Users, DollarSign, ArrowUpRight, ArrowDownRight,
   Plus, Upload, Settings, Search, Download, Pencil, Trash2, AlertCircle,
@@ -479,8 +479,8 @@ function DriverDetails({ driverResults, onDetail }: any) {
               {driverResults.map((d: any) => {
                 const isExpanded = expanded === d.id
                 return (
-                  <>
-                    <tr key={d.id} className="border-t border-border/60 hover:bg-muted/30">
+                  <Fragment key={d.id}>
+                    <tr className="border-t border-border/60 hover:bg-muted/30">
                       <td className="py-2 px-3">
                         <button
                           onClick={() => setExpanded(isExpanded ? null : d.id)}
@@ -496,8 +496,8 @@ function DriverDetails({ driverResults, onDetail }: any) {
                       <td className="py-2 px-3 text-right tabular-nums">{fmt(d.income.distancePayment)}</td>
                       <td className="py-2 px-3 text-right tabular-nums">{fmt(d.income.segmentPayment)}</td>
                       <td className="py-2 px-3 text-right tabular-nums text-rose-600">-{fmt(d.income.totalPenalties)}</td>
-                      <td className={`py-2 px-3 text-right tabular-nums ${d.income.riderBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {d.income.riderBalance >= 0 ? '+' : ''}{fmt(d.income.riderBalance)}
+                      <td className="py-2 px-3 text-right tabular-nums text-rose-600">
+                        -{fmt(d.income.riderBalance)}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-semibold text-emerald-600">{fmt(d.income.totalIncome)}</td>
                       <td className="py-2 px-3 text-right tabular-nums">{fmt(d.expenses.perDriverTotal)}</td>
@@ -509,7 +509,7 @@ function DriverDetails({ driverResults, onDetail }: any) {
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr key={d.id + '-detail'} className="bg-muted/20">
+                      <tr className="bg-muted/20">
                         <td colSpan={15} className="p-4">
                           <div className="grid gap-4 md:grid-cols-3">
                             {/* Income breakdown */}
@@ -518,8 +518,8 @@ function DriverDetails({ driverResults, onDetail }: any) {
                               <DetailRow label="Basic Payment" value={fmt(d.income.basicPayment)} />
                               <DetailRow label="Distance Payment" value={fmt(d.income.distancePayment)} />
                               <DetailRow label="Segment Payment" value={fmt(d.income.segmentPayment)} />
-                              <DetailRow label="Total Penalties" value={`-${fmt(d.income.totalPenalties)}`} color="text-rose-600" />
-                              <DetailRow label="Rider Balance" value={(d.income.riderBalance >= 0 ? '+' : '') + fmt(d.income.riderBalance)} color={d.income.riderBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'} />
+                              <DetailRow label="Total Penalties (incl. Stacking)" value={`-${fmt(d.income.totalPenalties - Math.abs(d.income.riderBalance))}`} color="text-rose-600" />
+                              <DetailRow label="Rider Balance (deduction)" value={`-${fmt(d.income.riderBalance)}`} color="text-rose-600" />
                               {d.income.customFieldsTotal !== 0 && (
                                 <DetailRow label="Custom Fields" value={fmt(d.income.customFieldsTotal)} />
                               )}
@@ -561,7 +561,7 @@ function DriverDetails({ driverResults, onDetail }: any) {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -870,8 +870,9 @@ function ImportDialog({ open, onOpenChange, onImported, defaultMonth }: any) {
                 </thead>
                 <tbody>
                   {preview.slice(0, 50).map((r, i) => {
-                    const totalPen = Math.abs(r.stackingDeduction||0) + Math.abs(r.latePenalty||0) + Math.abs(r.noShowPenalty||0) + Math.abs(r.missedDaysPenalty||0)
-                    const income = (r.basicPayment||0) + (r.distancePayment||0) + (r.segmentPayment||0) - totalPen + (r.riderBalance||0)
+                    // Total income = basic + distance + segment - ALL penalties - rider balance
+                    const totalPen = Math.abs(r.stackingDeduction||0) + Math.abs(r.latePenalty||0) + Math.abs(r.noShowPenalty||0) + Math.abs(r.missedDaysPenalty||0) + Math.abs(r.riderBalance||0)
+                    const income = (r.basicPayment||0) + (r.distancePayment||0) + (r.segmentPayment||0) - totalPen
                     return (
                       <tr key={i} className="border-t">
                         <td className="py-1 px-2 font-mono">{r.riderId}</td>
@@ -880,7 +881,7 @@ function ImportDialog({ open, onOpenChange, onImported, defaultMonth }: any) {
                         <td className="py-1 px-2 text-right tabular-nums">{fmt(r.distancePayment||0)}</td>
                         <td className="py-1 px-2 text-right tabular-nums">{fmt(r.segmentPayment||0)}</td>
                         <td className="py-1 px-2 text-right tabular-nums text-rose-600">-{fmt(totalPen)}</td>
-                        <td className={`py-1 px-2 text-right tabular-nums ${(r.riderBalance||0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(r.riderBalance||0)}</td>
+                        <td className="py-1 px-2 text-right tabular-nums text-rose-600">-{fmt(r.riderBalance||0)}</td>
                         <td className="py-1 px-2 text-right tabular-nums font-semibold">{fmt(income)}</td>
                       </tr>
                     )
@@ -1203,8 +1204,8 @@ function DriverDetailDialog({ driver, month, onOpenChange }: any) {
             <DetailRow label="Basic Payment" value={fmt(driver.income?.basicPayment || 0)} />
             <DetailRow label="Distance Payment" value={fmt(driver.income?.distancePayment || 0)} />
             <DetailRow label="Segment Payment" value={fmt(driver.income?.segmentPayment || 0)} />
-            <DetailRow label="Total Penalties" value={`-${fmt(driver.income?.totalPenalties || 0)}`} color="text-rose-600" />
-            <DetailRow label="Rider Balance" value={fmt(driver.income?.riderBalance || 0)} color={(driver.income?.riderBalance || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'} />
+            <DetailRow label="Total Penalties (incl. Stacking)" value={`-${fmt(driver.income?.totalPenalties ? driver.income.totalPenalties - Math.abs(driver.income.riderBalance || 0) : 0)}`} color="text-rose-600" />
+            <DetailRow label="Rider Balance (deduction)" value={`-${fmt(driver.income?.riderBalance || 0)}`} color="text-rose-600" />
             <div className="mt-2 pt-2 border-t font-semibold">
               Total Income: <span className="text-emerald-600">{fmt(driver.income?.totalIncome || 0)}</span>
             </div>
