@@ -20,6 +20,7 @@ import {
   Shield,
   Activity,
   ArrowRightLeft,
+  Scale,
 } from 'lucide-react'
 import { DashboardView } from '@/components/payroll/dashboard-view'
 import { DriversView } from '@/components/payroll/drivers-view'
@@ -31,6 +32,7 @@ import { ImportView } from '@/components/payroll/import-view'
 import { AuditLogsView } from '@/components/payroll/audit-logs-view'
 import { CompanyBrandingView } from '@/components/payroll/company-branding-view'
 import { ExceptionsView } from '@/components/payroll/exceptions-view'
+import { IncomeExpensesView } from '@/components/payroll/income-expenses-view'
 import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +46,7 @@ type TabId =
   | 'dashboard'
   | 'drivers'
   | 'drivers_registration'
+  | 'income_expenses'
   | 'rules'
   | 'payslips'
   | 'traffic'
@@ -58,6 +61,7 @@ const TABS: { id: TabId; label: string; labelAr: string; icon: any; group: strin
   { id: 'drivers', label: 'Driver Results', labelAr: 'نتائج السائقين', icon: Users, group: 'main' },
   { id: 'drivers_registration', label: 'Drivers Registration', labelAr: 'تسجيل السائقين', icon: UserPlus, group: 'main' },
   { id: 'payslips', label: 'Payslips', labelAr: 'قسائم الرواتب', icon: FileText, group: 'main' },
+  { id: 'income_expenses', label: 'Income vs Expenses', labelAr: 'دخل ومصروفات', icon: Scale, group: 'main' },
   { id: 'exceptions', label: 'Exceptions', labelAr: 'الاستثناءات', icon: AlertTriangle, group: 'main' },
   { id: 'rules', label: 'Rules Control Center', labelAr: 'مركز القواعد', icon: Settings2, group: 'config' },
   { id: 'traffic', label: 'Traffic Violations', labelAr: 'المخالفات المرورية', icon: CarFront, group: 'config' },
@@ -154,6 +158,7 @@ export default function Home() {
           {activeTab === 'dashboard' && <DashboardView runId={runId} setRunId={setRunId} onNavigate={setActiveTab} />}
           {activeTab === 'drivers' && <DriversView runId={runId} setRunId={setRunId} onNavigate={setActiveTab} />}
           {activeTab === 'drivers_registration' && <DriversRegistrationView />}
+          {activeTab === 'income_expenses' && <IncomeExpensesView />}
           {activeTab === 'rules' && <RulesControlCenter />}
           {activeTab === 'payslips' && <PayslipsView runId={runId} />}
           {activeTab === 'traffic' && <TrafficViolationsView />}

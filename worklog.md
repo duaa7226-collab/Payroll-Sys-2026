@@ -422,3 +422,109 @@ Stage Summary:
 - When user activates a new bonus, the stacking deduction stays intact
 - Key mapping added: short keys (stored) → long keys (salary engine input)
 - Verified with 17 riders — all penalties preserved after recalc
+
+---
+Task ID: income-vs-expenses-module
+Agent: main
+Task: Build "Driver Income vs Expenses" dashboard module — import income from delivery companies, track expenses, calculate net profit per driver
+
+Work Log:
+=== 1. Database Schema (prisma/schema.prisma) ===
+- Added 4 new models:
+  * IncomeRecord — monthly income per driver per company (basic_payment, distance_payment, segment_payment, 9 penalty fields, riderBalance signed, customFieldsJson, totalIncome/totalPenalties cached, sourceFile, importedBy)
+    - Unique constraint: month + riderId + companyName
+    - Linked to Driver (nullable, onDelete: SetNull)
+  * ExpenseCategory — user-defined categories (name, nameAr, defaultAmount, allocationType: per_driver|shared|assigned)
+  * Expense — monthly expense records (categoryId, amount, allocationType, assignedRiderId, notes, receiptUrl)
+  * DriverCount — monthly active driver count (unique month, used for shared allocation)
+  * CustomIncomeField — custom add/deduct field definitions
+- Added incomeRecords relation to Driver model
+- Ran prisma db push + prisma generate
+
+=== 2. Calculation Engine (src/lib/income-expenses-engine.ts) ===
+- calculateIncome(rec): Total income = basic + distance + segment - |penalties| + riderBalance + customFields
+- calculateDriverExpenses(month, riderId, activeDriverCount):
+  * per_driver: charged to ALL active drivers
+  * shared: total ÷ activeDriverCount (safe division, fallback to 1 if 0)
+  * assigned: charged only to the assigned rider
+- getActiveDriverCount(month): reads DriverCount table, falls back to distinct rider IDs in income records
+- calculateDriverNet(incomeRecord, month, activeDriverCount): full result
+
+=== 3. API Routes (all Node.js runtime) ===
+- /api/income-expenses/dashboard — GET: returns months, companies, summary cards, income by company, expenses by category, expense allocation breakdown, per-driver results
+- /api/income-expenses/income — GET/POST/PUT/DELETE: CRUD for income records
+  * POST checks for duplicate (month+riderId+companyName), requires forceUpdate=true to overwrite
+  * Auto-links to Driver by riderId
+  * Recalculates totalIncome + totalPenalties on save
+- /api/income-expenses/import-preview — POST: bulk import with validation
+  * Validates: missing riderId, duplicate riderId, invalid amounts
+  * Preview mode (preview=true): returns calculated totals without saving
+  * Save mode: imports/updates records, returns imported/updated counts
+  * Checks for existing DB records, requires forceUpdate to overwrite
+- /api/income-expenses/expenses — GET/POST/PUT/DELETE: CRUD for expenses
+- /api/income-expenses/driver-count — GET/POST: set monthly driver count
+  * Validates count > 0 (prevents division by zero)
+  * Requires confirm=true if changing existing count (only affects that month)
+- /api/income-expenses/categories — GET/POST/PUT/DELETE: manage expense categories
+- /api/income-expenses/drivers — GET: list all drivers for dropdowns
+
+=== 4. Default Expense Categories Seeded ===
+Ran scripts/seed_expense_categories.ts — created 8 categories:
+- Iqama: 1,000 SAR per_driver
+- Petrol: 1,200 SAR per_driver
+- Car rent: 1,500 SAR per_driver
+- Internet: 115 SAR per_driver
+- Office: 18,000 SAR shared
+- Accommodation / flat: 12,000 SAR shared
+- Saudis salary and insurance: 12,900 SAR shared
+- Electricity and water: 1,000 SAR shared
+
+=== 5. Main View Component (src/components/payroll/income-expenses-view.tsx) ===
+Single component with 3 tabs:
+- Monthly Summary (Page 1):
+  * 6 summary cards: Active Drivers, Total Income, Total Expenses, Net Profit, Avg Net/Driver, Profitable/Loss counts
+  * Income by Delivery Company table (company, drivers, income, expenses, net)
+  * Expenses by Category table
+  * Expense Allocation Breakdown (per_driver / shared / assigned)
+- Driver Details (Page 2):
+  * Full table with 15 columns: Rider ID, Name, Company, Basic Pay, Distance, Segment, Penalties, Rider Balance, Total Income, Per-Driver Exp, Shared Exp, Assigned Exp, Total Exp, Net Profit
+  * Expandable rows showing full income/expense breakdown + net profit calculation
+  * Click any row to see detailed calculation dialog
+- Expenses tab:
+  * List of expenses for the month with delete option
+- Import Dialog (4-step wizard):
+  * Step 1: Upload — select month, company, Excel/CSV file
+  * Step 2: Map — auto-detect columns, manual override, Arabic+English support
+  * Step 3: Preview — shows first 50 rows with calculated income, forceUpdate toggle
+  * Step 4: Saving — loading state
+- Expense Dialog — add expense with category, amount, allocation type, assigned driver
+- Driver Count Dialog — set/confirm monthly driver count (with change confirmation)
+- Categories Dialog — add/view/delete expense categories
+- Driver Detail Dialog — full income/expense/net profit breakdown
+
+=== 6. Navigation (src/app/page.tsx) ===
+- Added new tab "Income vs Expenses · دخل ومصروفات" with Scale icon
+- Positioned in Operations section (after Payslips, before Exceptions)
+- Renders <IncomeExpensesView />
+
+=== 7. Build Verification ===
+- Build succeeded
+- All 7 API routes registered:
+  * /api/income-expenses/dashboard
+  * /api/income-expenses/income
+  * /api/income-expenses/expenses
+  * /api/income-expenses/driver-count
+  * /api/income-expenses/categories
+  * /api/income-expenses/drivers
+  * /api/income-expenses/import-preview
+
+Stage Summary:
+- Complete "Driver Income vs Expenses" module built
+- Supports: Excel/CSV import with column mapping + preview, manual income entry, expense management with 3 allocation types, driver count management, net profit calculation per driver + month
+- Income formula: basic + distance + segment - penalties + riderBalance (configurable)
+- Expense allocation: per_driver (each), shared (÷ active drivers), assigned (one driver)
+- 8 default expense categories seeded
+- Historical months preserved — changing driver count only affects that month
+- All amounts in SAR, displayed to 2 decimal places
+- Validation: duplicate detection, missing rider IDs, invalid amounts, division by zero prevention
+- Audit logging on all create/update/import actions

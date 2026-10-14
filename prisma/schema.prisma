@@ -112,6 +112,7 @@ model Driver {
   results       DriverResult[]
   violations    TrafficViolation[]
   manualAdjustments ManualAdjustment[]
+  incomeRecords IncomeRecord[]
 }
 
 // ============================================================
@@ -304,4 +305,106 @@ model AuditLog {
   performedBy String   @default("admin")
   createdAt   DateTime @default(now())
   ruleSet     PayrollRuleSet? @relation(fields: [ruleSetId], references: [id])
+}
+
+// ============================================================
+// DRIVER INCOME VS EXPENSES MODULE
+// ============================================================
+
+// Monthly income record per driver per delivery company
+model IncomeRecord {
+  id              String   @id @default(cuid())
+  month           String   // e.g. "2026-08" (YYYY-MM)
+  driverId        String?  // links to Driver.id (nullable so deletion doesn't cascade)
+  riderId         String   // rider ID from Excel (e.g. "4643856")
+  driverName      String
+  companyName     String   // "HungerStation" | "Keeta" | etc.
+  basicPayment    Float    @default(0)
+  distancePayment Float    @default(0)
+  segmentPayment  Float    @default(0)
+  // Penalties (all treated as deductions)
+  acceptancePenalty       Float @default(0)
+  contactPenalty          Float @default(0)
+  stackingDeduction       Float @default(0)
+  declinedPenalty         Float @default(0)
+  latePenalty             Float @default(0)
+  noShowPenalty           Float @default(0)
+  noShowSpecialPenalty    Float @default(0)
+  dailyAcceptancePenalty  Float @default(0)
+  missedDaysPenalty       Float @default(0)
+  riderBalance            Float    @default(0) // signed: + adds to income, - reduces
+  // Custom income fields stored as JSON: [{ name, amount, type: 'add'|'deduct' }]
+  customFieldsJson String?
+  // Calculated totals (cached)
+  totalIncome      Float    @default(0)
+  totalPenalties    Float    @default(0)
+  // Source tracking
+  sourceFile        String?  // original filename
+  importedBy        String   @default("admin")
+  importNotes      String?
+  createdAt         DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  driver           Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@unique([month, riderId, companyName])
+  @@index([month])
+  @@index([companyName])
+}
+
+// Expense category — user can add new ones
+model ExpenseCategory {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  nameAr          String?
+  defaultAmount   Float    @default(0) // suggested amount when creating expense
+  allocationType  String   @default("per_driver") // per_driver | shared | assigned
+  description     String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  expenses        Expense[]
+}
+
+// Expense record — monthly, per category, allocated per driver / shared / assigned
+model Expense {
+  id              String   @id @default(cuid())
+  month           String   // "2026-08"
+  categoryId      String
+  categoryName    String   // denormalized for history
+  amount          Float    // total amount for the month
+  allocationType  String   // per_driver | shared | assigned
+  assignedDriverId String? // when allocationType = 'assigned' — Driver.id
+  assignedRiderId String?  // when allocationType = 'assigned' — rider ID
+  notes           String?
+  receiptUrl      String?
+  createdBy       String   @default("admin")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  category        ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([month])
+  @@index([categoryId])
+}
+
+// Monthly driver count — used for shared expense allocation
+model DriverCount {
+  id              String   @id @default(cuid())
+  month           String   @unique // "2026-08"
+  activeDriverCount Int     @default(0)
+  notes           String?
+  confirmedBy     String   @default("admin")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Custom income field definitions (per company or global)
+model CustomIncomeField {
+  id              String   @id @default(cuid())
+  name            String
+  nameAr          String?
+  type            String   @default("add") // add | deduct
+  description     String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
