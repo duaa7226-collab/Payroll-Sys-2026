@@ -276,10 +276,14 @@ export function calculateDriverSalary(
     segment: Math.abs(raw.segmentPayment || 0),
   }
 
-  // ====== Deductible penalties — only these reduce the rider's gross salary ======
-  // Matches Excel Salary_Calculation "Total Deductions" column:
-  //   rider_balance + stacking + missed_days + car_deduction + tga_deduction + custom_deductions
-  const DEDUCTIBLE_PENALTIES = ['stacking', 'missed_days', 'rider_balance', 'car_deduction', 'tga_deduction']
+  // ====== Deductible penalties — ALL penalties reduce the rider's gross salary ======
+  // Per user requirement: ALL penalties must be deducted, including declined, late, noshow, etc.
+  // This ensures the salary reflects ALL deductions from the delivery company's data.
+  const DEDUCTIBLE_PENALTIES = [
+    'acceptance', 'contact', 'stacking', 'declined', 'late',
+    'noshow', 'noshow_special', 'daily_acceptance', 'missed_days',
+    'rider_balance', 'car_deduction', 'tga_deduction'
+  ]
   let totalOtherPenalties = DEDUCTIBLE_PENALTIES.reduce((sum, key) => sum + (penalties[key] || 0), 0)
   // Apply max allowed penalty if set
   if (penMaxAllowed > 0 && totalOtherPenalties > penMaxAllowed) {

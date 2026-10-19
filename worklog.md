@@ -801,3 +801,56 @@ Stage Summary:
 - Rider 4648308: 4576 + 3885.1945 + 1001 - 536.77 = 8925.4245 (100% accurate)
 - Dashboard now shows correct totals for all 17 drivers
 - The "Sync from Payroll Import" button will also work correctly for future months
+
+---
+Task ID: fix-all-penalties-deductible-plus-internet-auto-seed
+Agent: main
+Task: Ensure ALL penalties (incl. declined) are deducted + auto-seed internet (115 SAR) expense for every month
+
+Work Log:
+=== Findings ===
+1. Internet (115 SAR) — already exists as per_driver expense for 2026-10 ✅
+2. Rider 4898620 missed_days=500 — WAS already being deducted ✅
+3. Rider 4648709 declined=50 — was NOT being deducted in salary engine ❌
+   * Root cause: DEDUCTIBLE_PENALTIES only had 5 items: stacking, missed_days, rider_balance, car_deduction, tga_deduction
+   * declined, late, noshow, noshow_special, daily_acceptance, acceptance, contact were NOT included
+
+=== Fix 1: Added ALL penalties to DEDUCTIBLE_PENALTIES (src/lib/salary-engine.ts) ===
+Changed from:
+  const DEDUCTIBLE_PENALTIES = ['stacking', 'missed_days', 'rider_balance', 'car_deduction', 'tga_deduction']
+To:
+  const DEDUCTIBLE_PENALTIES = [
+    'acceptance', 'contact', 'stacking', 'declined', 'late',
+    'noshow', 'noshow_special', 'daily_acceptance', 'missed_days',
+    'rider_balance', 'car_deduction', 'tga_deduction'
+  ]
+→ Now ALL 12 penalty types are deducted from the rider's gross salary
+
+=== Fix 2: Auto-seed default expenses on sync (src/app/api/income-expenses/sync-from-payroll/route.ts) ===
+Added automatic expense seeding when syncing from payroll:
+- Checks if default expenses exist for the month
+- If not, creates them:
+  * Iqama: 1,000 SAR (per_driver)
+  * Petrol: 1,200 SAR (per_driver)
+  * Car rent: 1,500 SAR (per_driver)
+  * Internet: 115 SAR (per_driver)
+  * Office: 18,000 SAR (shared)
+  * Accommodation / flat: 12,000 SAR (shared)
+  * Saudis salary and insurance: 12,900 SAR (shared)
+  * Electricity and water: 1,000 SAR (shared)
+- Returns expensesAdded count in response
+- "Dynamic auto update" — every time a user syncs from payroll, default expenses are auto-seeded
+
+=== Fix 3: Recalculated ===
+- Triggered /api/recalculate for the latest payroll run
+- Verified rider 4648709:
+  * totalOtherPenalties: 584.2 → 634.2 (declined=50 now included) ✅
+- Verified rider 4898620:
+  * missed_days=500 still being deducted ✅
+  * totalOtherPenalties: 734.23 ✅
+
+=== Summary ===
+- ALL penalties (including declined, late, noshow, etc.) are now deducted from salary
+- Internet (115 SAR) auto-seeds for every new month when syncing from payroll
+- Default expenses auto-create during sync — no manual setup needed
+- Build verified

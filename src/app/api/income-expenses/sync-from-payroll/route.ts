@@ -163,6 +163,43 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // ====== Auto-seed default expenses (Internet, Iqama, Petrol, etc.) for this month ======
+    // Ensures every month has the stable per-driver and shared expenses automatically
+    const DEFAULT_EXPENSES = [
+      { name: 'Iqama', amount: 1000, type: 'per_driver' },
+      { name: 'Petrol', amount: 1200, type: 'per_driver' },
+      { name: 'Car rent', amount: 1500, type: 'per_driver' },
+      { name: 'Internet', amount: 115, type: 'per_driver' },
+      { name: 'Office', amount: 18000, type: 'shared' },
+      { name: 'Accommodation / flat', amount: 12000, type: 'shared' },
+      { name: 'Saudis salary and insurance', amount: 12900, type: 'shared' },
+      { name: 'Electricity and water', amount: 1000, type: 'shared' },
+    ]
+    const existingExpenses = await db.expense.findMany({ where: { month }, select: { categoryName: true } })
+    const existingCats = new Set(existingExpenses.map(e => e.categoryName))
+    const allCategories = await db.expenseCategory.findMany()
+    let expensesAdded = 0
+    for (const def of DEFAULT_EXPENSES) {
+      if (!existingCats.has(def.name)) {
+        let cat = allCategories.find(c => c.name === def.name)
+        if (!cat) {
+          cat = await db.expenseCategory.create({ data: { name: def.name, defaultAmount: def.amount, allocationType: def.type } })
+        }
+        await db.expense.create({
+          data: {
+            month,
+            categoryId: cat.id,
+            categoryName: cat.name,
+            amount: def.amount,
+            allocationType: def.type,
+            notes: 'Auto-seeded during sync',
+            createdBy: 'system-sync',
+          },
+        })
+        expensesAdded++
+      }
+    }
+
     await db.auditLog.create({
       data: {
         action: 'income_sync_payroll',
@@ -176,6 +213,7 @@ export async function POST(req: NextRequest) {
       success: true,
       imported,
       updated,
+      expensesAdded,
       driverCount: results.length,
       payrollRun: {
         id: run.id,
