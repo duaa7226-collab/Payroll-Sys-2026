@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
+import { calculateIncome, calculateExpensesFromList, getActiveDriverCount } from '@/lib/income-expenses-engine'
 
-// GET /api/dashboard — executive dashboard KPIs + charts data
+// GET /api/dashboard — executive dashboard KPIs + charts data + income/expense summary
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const runId = searchParams.get('runId')
@@ -38,9 +39,77 @@ export async function GET(req: NextRequest) {
   const totalNet = results.reduce((a, r) => a + r.finalNetSalary, 0)
   const totalVariance = results.reduce((a, r) => a + Math.abs(r.varianceAmount), 0)
   const totalTraffic = results.reduce((a, r) => a + r.trafficViolationsDeduction, 0)
+  const totalBonus = results.reduce((a, r) => a + r.bonusAmount, 0)
+  const totalMissingDeduction = results.reduce((a, r) => a + r.missingOrderDeduction, 0)
+  const totalWorkingHours = results.reduce((a, r) => a + r.workingHours, 0)
   const driversRequiringReview = results.filter(r => r.reviewStatus !== 'ok').length
   const highestPaid = results[0] ?? null
   const highestPenalty = [...results].sort((a, b) => b.totalOtherPenalties - a.totalOtherPenalties)[0] ?? null
+
+  // ====== Fetch income + expenses for the same month ======
+  const monthMap: Record<string, string> = {
+    'january': '01', 'february': '02', 'march': '03', 'april': '04',
+    'may': '05', 'june': '06', 'july': '07', 'august': '08',
+    'september': '09', 'october': '10', 'november': '11', 'december': '12',
+  }
+  const labelParts = payrollRun.payrollMonth.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/)
+  let monthKey = ''
+  for (let i = 0; i < labelParts.length; i++) {
+    const m = monthMap[labelParts[i]]
+    if (m) {
+      const y = labelParts.find(p => /^\d{4}$/.test(p)) || String(new Date().getFullYear())
+      monthKey = `${y}-${m}`
+      break
+    }
+  }
+
+  let incomeExpenseSummary = null
+  if (monthKey) {
+    try {
+      const activeDriverCount = await getActiveDriverCount(monthKey)
+      const incomeRecords = await db.incomeRecord.findMany({ where: { month: monthKey } })
+      const expenses = await db.expense.findMany({ where: { month: monthKey } })
+
+      if (incomeRecords.length > 0) {
+        let totalIncome = 0
+        let totalExpenses = 0
+        let profitableCount = 0
+        for (const rec of incomeRecords) {
+          const income = calculateIncome(rec)
+          const expAlloc = calculateExpensesFromList(expenses, rec.riderId, activeDriverCount)
+          totalIncome += income.totalIncome
+          totalExpenses += expAlloc.totalExpenses
+          if (income.totalIncome - expAlloc.totalExpenses > 0) profitableCount++
+        }
+        const totalNetProfit = totalIncome - totalExpenses
+
+        const expenseByCategoryMap = new Map<string, number>()
+        for (const e of expenses) {
+          expenseByCategoryMap.set(e.categoryName, (expenseByCategoryMap.get(e.categoryName) ?? 0) + e.amount)
+        }
+        const perDriverExp = expenses.filter(e => e.allocationType === 'per_driver').reduce((s, e) => s + e.amount, 0)
+        const sharedExp = expenses.filter(e => e.allocationType === 'shared').reduce((s, e) => s + e.amount, 0)
+        const assignedExp = expenses.filter(e => e.allocationType === 'assigned').reduce((s, e) => s + e.amount, 0)
+
+        incomeExpenseSummary = {
+          month: monthKey,
+          activeDriverCount,
+          totalIncome,
+          totalExpenses,
+          totalNetProfit,
+          avgNetPerDriver: activeDriverCount > 0 ? totalNetProfit / activeDriverCount : 0,
+          profitableCount,
+          unprofitableCount: incomeRecords.length - profitableCount,
+          perDriverExp,
+          sharedExp,
+          assignedExp,
+          expenseByCategory: Array.from(expenseByCategoryMap.entries()).map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount),
+        }
+      }
+    } catch (e) {
+      console.error('Dashboard income/expense fetch failed:', e)
+    }
+  }
 
   const contractMap = new Map<string, { contract: string; drivers: number; net: number; gross: number; orders: number; penalties: number }>()
   for (const r of results) {
@@ -132,10 +201,14 @@ export async function GET(req: NextRequest) {
       totalNet,
       totalVariance,
       totalTraffic,
+      totalBonus,
+      totalMissingDeduction,
+      totalWorkingHours,
       driversRequiringReview,
       highestPaidDriver: highestPaid ? { name: highestPaid.driverName, amount: highestPaid.finalNetSalary } : null,
       highestPenaltyDriver: highestPenalty ? { name: highestPenalty.driverName, amount: highestPenalty.totalOtherPenalties } : null,
     },
+    incomeExpense: incomeExpenseSummary,
     charts: {
       byContract,
       top10: top10.map(r => ({ name: r.driverName, net: r.finalNetSalary, gross: r.grossSalaryBeforePenalties })),

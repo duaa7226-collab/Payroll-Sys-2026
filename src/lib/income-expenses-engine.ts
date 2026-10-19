@@ -100,7 +100,15 @@ export async function calculateDriverExpenses(
   activeDriverCount: number
 ): Promise<ExpenseAllocation> {
   const expenses = await db.expense.findMany({ where: { month } })
+  return calculateExpensesFromList(expenses, riderId, activeDriverCount)
+}
 
+// Calculate expense allocation from a pre-fetched list (no DB query — for batch performance)
+export function calculateExpensesFromList(
+  expenses: any[],
+  riderId: string,
+  activeDriverCount: number
+): ExpenseAllocation {
   const perDriverBreakdown: Array<{ categoryName: string; amount: number }> = []
   const sharedBreakdown: Array<{ categoryName: string; totalAmount: number; perDriver: number }> = []
   const assignedBreakdown: Array<{ categoryName: string; amount: number; riderId: string | null }> = []
@@ -109,7 +117,6 @@ export async function calculateDriverExpenses(
   let sharedTotal = 0
   let assignedTotal = 0
 
-  // Group shared expenses by category (sum amounts if multiple entries)
   const sharedByCategory = new Map<string, number>()
   for (const e of expenses) {
     if (e.allocationType === 'shared') {
@@ -119,15 +126,11 @@ export async function calculateDriverExpenses(
 
   for (const e of expenses) {
     if (e.allocationType === 'per_driver') {
-      // Per-driver expenses apply to ALL active drivers
       perDriverTotal += e.amount
       const existing = perDriverBreakdown.find(p => p.categoryName === e.categoryName)
       if (existing) existing.amount += e.amount
       else perDriverBreakdown.push({ categoryName: e.categoryName, amount: e.amount })
-    } else if (e.allocationType === 'shared') {
-      // Shared: total ÷ active driver count — handled below
     } else if (e.allocationType === 'assigned') {
-      // Assigned to a specific driver
       if (e.assignedRiderId === riderId) {
         assignedTotal += e.amount
         assignedBreakdown.push({ categoryName: e.categoryName, amount: e.amount, riderId: e.assignedRiderId })
@@ -135,7 +138,6 @@ export async function calculateDriverExpenses(
     }
   }
 
-  // Shared expenses — divide by active driver count
   const safeDriverCount = activeDriverCount > 0 ? activeDriverCount : 1
   for (const [categoryName, totalAmount] of sharedByCategory.entries()) {
     const perDriver = totalAmount / safeDriverCount

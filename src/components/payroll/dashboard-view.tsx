@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   Users, Wallet, TrendingUp, TrendingDown, Target, CarFront,
   AlertTriangle, Crown, Zap, Activity, FileText, Download,
-  ArrowUpRight, ArrowDownRight, Layers, Award
+  ArrowUpRight, ArrowDownRight, Layers, Award, FileSpreadsheet, RefreshCcw
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -58,6 +58,35 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
 }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportReport = async () => {
+    setExporting(true)
+    try {
+      const url = runId ? `/api/management-report?runId=${runId}` : '/api/management-report'
+      const resp = await fetch(url)
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}))
+        throw new Error(err.error || 'Export failed')
+      }
+      const blob = await resp.blob()
+      const url2 = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url2
+      const cd = resp.headers.get('content-disposition') || ''
+      const match = cd.match(/filename="?([^"]+)"?/i)
+      a.download = match?.[1] || `Management_Report_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url2), 1000)
+    } catch (e: any) {
+      console.error('Export failed:', e)
+      alert('Export failed: ' + e.message)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     queueMicrotask(() => setLoading(true))
@@ -87,7 +116,7 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
     )
   }
 
-  const { kpis, charts, ruleSummary, run, allRuns } = data
+  const { kpis, charts, ruleSummary, run, allRuns, incomeExpense } = data
 
   return (
     <div className="space-y-6">
@@ -124,6 +153,15 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
           </Select>
           <Button variant="outline" size="sm" onClick={() => onNavigate('import')}>
             <Download className="mr-1 h-4 w-4" /> New Import
+          </Button>
+          <Button
+            size="sm"
+            className="bg-blue-700 hover:bg-blue-800 text-white shadow-md"
+            onClick={handleExportReport}
+            disabled={exporting}
+          >
+            {exporting ? <RefreshCcw className="mr-1 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1 h-4 w-4" />}
+            {exporting ? 'Generating...' : 'Export Management Report'}
           </Button>
         </div>
       </div>
@@ -201,6 +239,77 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
           tone="violet"
         />
       </div>
+
+      {/* Income vs Expenses KPI strip — shows final business results on main dashboard */}
+      {incomeExpense && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            title="Total Income"
+            titleAr="إجمالي الدخل"
+            value={`SAR ${incomeExpense.totalIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={ArrowUpRight}
+            accent="emerald"
+            trend={`Avg: SAR ${(incomeExpense.totalIncome / incomeExpense.activeDriverCount).toFixed(0)}/driver`}
+            trendUp
+            subtitle={`From ${incomeExpense.activeDriverCount} drivers`}
+          />
+          <KpiCard
+            title="Total Expenses"
+            titleAr="إجمالي المصروفات"
+            value={`SAR ${incomeExpense.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={ArrowDownRight}
+            accent="rose"
+            trend={`Per driver: SAR ${(incomeExpense.totalExpenses / incomeExpense.activeDriverCount).toFixed(0)}`}
+            trendUp={false}
+            subtitle={`Shared: SAR ${incomeExpense.sharedExp.toFixed(0)} · Per-driver: SAR ${incomeExpense.perDriverExp.toFixed(0)}`}
+          />
+          <KpiCard
+            title="Net Profit"
+            titleAr="صافي الربح"
+            value={`SAR ${incomeExpense.totalNetProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={incomeExpense.totalNetProfit >= 0 ? TrendingUp : TrendingDown}
+            accent={incomeExpense.totalNetProfit >= 0 ? 'emerald' : 'rose'}
+            trend={`Avg: SAR ${incomeExpense.avgNetPerDriver.toFixed(2)}/driver`}
+            trendUp={incomeExpense.totalNetProfit >= 0}
+            subtitle={`${incomeExpense.profitableCount} profitable · ${incomeExpense.unprofitableCount} loss`}
+          />
+          <KpiCard
+            title="Working Hours"
+            titleAr="ساعات العمل"
+            value={kpis.totalWorkingHours?.toFixed(0)?.toString() ?? '—'}
+            icon={Activity}
+            accent="cyan"
+            trend={`${kpis.totalWorkingDays?.toFixed(0) ?? 0} working days`}
+            trendUp
+            subtitle={`Bonus: SAR ${kpis.totalBonus?.toFixed(0) ?? 0} · Missing ded: SAR ${kpis.totalMissingDeduction?.toFixed(0) ?? 0}`}
+          />
+        </div>
+      )}
+
+      {/* Expense categories mini-strip — shows breakdown on main dashboard */}
+      {incomeExpense?.expenseByCategory && incomeExpense.expenseByCategory.length > 0 && (
+        <Card className="card-glow border-orange-200 dark:border-orange-900/50 bg-gradient-to-r from-orange-50 to-transparent dark:from-orange-950/20">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-orange-700 dark:text-orange-300 mb-2">
+              <ArrowDownRight className="h-3.5 w-3.5" />
+              Expense Categories · فئات المصروفات
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {incomeExpense.expenseByCategory.map((cat: any, i: number) => (
+                <div key={i} className="flex items-center gap-1.5 rounded-lg border border-orange-200 dark:border-orange-900/40 bg-white dark:bg-card px-2.5 py-1">
+                  <span className="text-xs font-medium">{cat.name}</span>
+                  <span className="text-xs font-bold text-orange-600 dark:text-orange-400 tabular-nums">
+                    SAR {cat.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground">
+                    ({(cat.amount / incomeExpense.activeDriverCount).toFixed(0)}/drv)
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Active Rule Summary banner */}
       <Card className="card-glow border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50 to-transparent dark:from-emerald-950/30">
