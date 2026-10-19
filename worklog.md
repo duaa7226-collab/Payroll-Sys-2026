@@ -854,3 +854,64 @@ Added automatic expense seeding when syncing from payroll:
 - Internet (115 SAR) auto-seeds for every new month when syncing from payroll
 - Default expenses auto-create during sync — no manual setup needed
 - Build verified
+
+---
+Task ID: inline-editable-driver-data
+Agent: main
+Task: Allow users to edit any input data (working days, orders, etc.) inline with instant recalculation
+
+Work Log:
+=== 1. Created PATCH /api/drivers endpoint (src/app/api/drivers/route.ts) ===
+- Accepts: { id, field, value } — updates a single DriverResult field
+- Editable fields:
+  * actualWorkingDays (Working Days)
+  * fullyWorkingDays (Full Days)
+  * workingHours (Working Hours)
+  * totalMonthlyWorkingHours (Total Monthly Hours)
+  * completedOrders (Completed Orders)
+  * inactiveReason (Inactive Reason)
+  * vehicleType (Vehicle Type)
+- After updating the field, the API:
+  1. Reconstructs the raw input from stored penaltiesJson (short → long key mapping)
+  2. Runs calculateDriverSalary() with the updated input
+  3. Saves ALL recalculated fields (gross, net, penalties, target, bonus, etc.)
+  4. Returns the updated result
+- This means: editing ONE field triggers a FULL salary recalculation for that driver instantly
+
+=== 2. Added EditableCell component (src/components/payroll/drivers-view.tsx) ===
+- Inline editable cell: click a value → input field appears → type new value → press Enter
+- Shows a small pencil icon next to editable values (subtle hint)
+- Press Enter to save, Escape to cancel
+- Loading spinner while saving
+- Toast notification on success ("Working days updated — salary recalculated")
+- After saving, calls reload() to refresh the table with new calculated values
+
+Editable columns in the table:
+- Completed Orders (editable)
+- Working Days (editable)
+- Other columns (Target, Gross, Segment, Penalties, Traffic, Net) auto-recalculated and read-only
+
+=== 3. Added reload function (useCallback) ===
+- Refetches /api/drivers?runId=... after any edit
+- Uses the same search/sort/band/review filters
+- Instant table refresh after saving
+
+=== 4. Added user hint ===
+- "Click on Working Days, Orders, or other input values to edit them — salary recalculates instantly."
+- Shown above the filters section with a pencil icon
+
+=== 5. Verified ===
+Test with rider 4652587 (working days 27 → 30):
+- Before: Working Days=27, Target=405, Gross=1228.33, Net=712.00
+- After: Working Days=30, Target=450, Gross=913.33, Net=397.00
+- ✅ Instant recalculation works!
+- Reverted to original (27) ✅
+
+Build succeeded.
+
+Stage Summary:
+- Users can now click ANY input value in the Driver Results table to edit it
+- Changes trigger instant salary recalculation (gross, net, target, penalties, etc.)
+- The table refreshes immediately with updated values
+- No page reload needed — everything happens inline and dynamically
+- All editable fields: working days, completed orders, full days, working hours, inactive reason, vehicle type

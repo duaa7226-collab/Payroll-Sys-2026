@@ -210,3 +210,154 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Delete failed', message: err?.message }, { status: 500 })
   }
 }
+
+// PATCH /api/drivers — update a single DriverResult field (inline edit)
+// Body: { id: "resultId", field: "actualWorkingDays", value: 30 }
+// Triggers instant recalculation of that driver's salary
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { id, field, value } = body
+
+    if (!id || !field) {
+      return NextResponse.json({ error: 'id and field required' }, { status: 400 })
+    }
+
+    // Allowed editable fields on DriverResult
+    const EDITABLE_FIELDS: Record<string, string> = {
+      actualWorkingDays: 'actualWorkingDays',
+      fullyWorkingDays: 'fullyWorkingDays',
+      workingHours: 'workingHours',
+      totalMonthlyWorkingHours: 'totalMonthlyWorkingHours',
+      completedOrders: 'completedOrders',
+      inactiveReason: 'inactiveReason',
+      vehicleType: 'vehicleType',
+    }
+
+    const dbField = EDITABLE_FIELDS[field]
+    if (!dbField) {
+      return NextResponse.json({ error: `Field "${field}" is not editable. Editable: ${Object.keys(EDITABLE_FIELDS).join(', ')}` }, { status: 400 })
+    }
+
+    // Fetch the existing result
+    const existing = await db.driverResult.findUnique({ where: { id } })
+    if (!existing) return NextResponse.json({ error: 'Result not found' }, { status: 404 })
+
+    // Parse value
+    let parsedValue: any = value
+    if (typeof value === 'string') {
+      if (field === 'inactiveReason' || field === 'vehicleType') {
+        parsedValue = value
+      } else {
+        parsedValue = parseFloat(value)
+        if (isNaN(parsedValue)) return NextResponse.json({ error: 'Invalid numeric value' }, { status: 400 })
+        if (field === 'completedOrders') parsedValue = Math.round(parsedValue)
+      }
+    }
+
+    // Update the field
+    const updated = await db.driverResult.update({
+      where: { id },
+      data: { [dbField]: parsedValue },
+    })
+
+    // ====== Recalculate this driver's salary on the fly ======
+    // We need to re-run the salary engine with the updated input
+    const { calculateDriverSalary } = await import('@/lib/salary-engine')
+    const { getActiveRuleSnapshot } = await import('@/lib/rule-helpers')
+    const { getAllRiderTrafficDeductions } = await import('@/lib/traffic-helpers')
+    const { getActiveCustomBonuses, getBonusesForRider } = await import('@/lib/custom-bonus-helpers')
+    const { getActiveCustomDeductions, getDeductionsForRider } = await import('@/lib/custom-deduction-helpers')
+
+    const activeRules = await getActiveRuleSnapshot()
+    const trafficByRider = await getAllRiderTrafficDeductions([existing.riderId])
+    const customBonuses = await getActiveCustomBonuses()
+    const customDeductions = await getActiveCustomDeductions()
+
+    // Reconstruct penalties from penaltiesJson (short → long key mapping)
+    const storedPenalties = JSON.parse(existing.penaltiesJson || '{}')
+    const penalties = {
+      acceptance_rate_penalties: storedPenalties.acceptance ?? 0,
+      contact_rate_penalties: storedPenalties.contact ?? 0,
+      stacking_deduction: storedPenalties.stacking ?? 0,
+      declined_penalties_day_logic: storedPenalties.declined ?? 0,
+      late_penalty: storedPenalties.late ?? 0,
+      no_show_penalty: storedPenalties.noshow ?? 0,
+      no_show_penalty_special_cities: storedPenalties.noshow_special ?? 0,
+      daily_acceptance_rate_penalty: storedPenalties.daily_acceptance ?? 0,
+      distance_payment: storedPenalties.distance ?? 0,
+      missed_days_penalty: storedPenalties.missed_days ?? 0,
+      segment_payment: storedPenalties.segment ?? 0,
+    }
+
+    const raw = {
+      riderId: existing.riderId,
+      name: existing.driverName,
+      contractName: existing.contractName,
+      vehicleType: field === 'vehicleType' ? parsedValue : existing.vehicleType,
+      inactiveReason: field === 'inactiveReason' ? parsedValue : (existing.inactiveReason || 'Active'),
+      completedOrders: field === 'completedOrders' ? parsedValue : existing.completedOrders,
+      uploadedBasicPayment: existing.uploadedBasicPayment,
+      uploadedCityPayment: existing.uploadedCityPayment,
+      actualWorkingDays: field === 'actualWorkingDays' ? parsedValue : existing.actualWorkingDays,
+      fullyWorkingDays: field === 'fullyWorkingDays' ? parsedValue : existing.fullyWorkingDays,
+      workingHours: field === 'workingHours' ? parsedValue : existing.workingHours,
+      totalMonthlyWorkingHours: field === 'totalMonthlyWorkingHours' ? parsedValue : existing.totalMonthlyWorkingHours,
+      penalties,
+      carDeduction: storedPenalties.car_deduction ?? 0,
+      tgaDeduction: storedPenalties.tga_deduction ?? 0,
+      riderBalance: storedPenalties.rider_balance ?? 0,
+      segmentPayment: storedPenalties.segment ?? existing.segmentPayment ?? 0,
+      trafficViolationsTotal: trafficByRider.get(existing.riderId)?.total ?? 0,
+      customBonuses: getBonusesForRider(customBonuses, existing.riderId).map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount })),
+      customDeductions: getDeductionsForRider(customDeductions, existing.riderId).map(d => ({ name: d.name, nameAr: d.nameAr, amount: d.amount, monthlyDeduction: d.monthlyDeduction })),
+    }
+
+    const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, existing.payrollMonth)
+
+    // Save recalculated result
+    const recalculated = await db.driverResult.update({
+      where: { id },
+      data: {
+        completedOrders: result.completedOrders,
+        actualWorkingDays: result.actualWorkingDays,
+        fullyWorkingDays: result.fullyWorkingDays,
+        workingHours: result.workingHours,
+        totalMonthlyWorkingHours: result.totalMonthlyWorkingHours,
+        inactiveReason: result.inactiveReason,
+        vehicleType: result.vehicleType,
+        dailyBaseRate: result.dailyBaseRate,
+        adjustedBaseSalary: result.adjustedBaseSalary,
+        adjustedTargetOrders: result.adjustedTargetOrders,
+        selectedTargetThreshold: result.selectedTargetThreshold,
+        baseSalaryEquivalent: result.baseSalaryEquivalent,
+        extraOrders: result.extraOrders,
+        missingOrders: result.missingOrders,
+        bonusAmount: result.bonusAmount,
+        missingOrderDeduction: result.missingOrderDeduction,
+        penaltiesJson: JSON.stringify(result.penalties),
+        totalOtherPenalties: result.totalOtherPenalties,
+        trafficViolationsDeduction: result.trafficViolationsDeduction,
+        grossSalaryBeforePenalties: result.grossSalaryBeforePenalties,
+        finalNetSalary: result.finalNetSalary,
+        varianceAmount: result.varianceAmount,
+        variancePercentage: result.variancePercentage,
+        varianceStatus: result.varianceStatus,
+        reviewStatus: result.reviewStatus,
+        exceptionFlag: result.exceptionFlag,
+        performanceBand: result.performanceBand,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      field,
+      oldValue: (existing as any)[dbField],
+      newValue: parsedValue,
+      result: recalculated,
+    })
+  } catch (err: any) {
+    console.error('PATCH /api/drivers failed:', err)
+    return NextResponse.json({ error: 'Update failed', message: err?.message }, { status: 500 })
+  }
+}

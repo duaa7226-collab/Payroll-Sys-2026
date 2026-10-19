@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import {
   Users, Search, ArrowUpDown, FileText, AlertTriangle, CheckCircle2,
-  ChevronRight, X, Download, FileSpreadsheet, Loader2, FileStack, FileBarChart
+  ChevronRight, X, Download, FileSpreadsheet, Loader2, FileStack, FileBarChart, Pencil, Check
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,7 @@ import {
 import { PayslipPreview } from './payslip-preview'
 import { safeFetchJson } from '@/lib/safe-fetch'
 import { exportDriversToExcel } from '@/lib/excel-export'
+import { toast } from 'sonner'
 import { generatePayrollSummaryPDF } from '@/lib/payroll-summary-pdf'
 import { generateOnePageSummaryPDF } from '@/lib/one-page-summary-pdf'
 import { cn } from '@/lib/utils'
@@ -53,6 +54,17 @@ export function DriversView({ runId, setRunId, onNavigate }: {
   const [exporting, setExporting] = useState(false)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [onePageLoading, setOnePageLoading] = useState(false)
+
+  const reload = useCallback(() => {
+    if (!runId) return
+    const params = new URLSearchParams({ runId, search, sort })
+    if (band !== 'all') params.set('band', band)
+    if (review !== 'all') params.set('review', review)
+    fetch(`/api/drivers?${params.toString()}`)
+      .then(r => r.json())
+      .then(d => setResults(d?.results ?? []))
+      .catch(() => {})
+  }, [runId, search, sort, band, review])
 
   const handleOnePageSummary = async () => {
     setOnePageLoading(true)
@@ -223,6 +235,12 @@ export function DriversView({ runId, setRunId, onNavigate }: {
         </div>
       </div>
 
+      {/* Editable hint */}
+      <div className="text-xs text-muted-foreground flex items-center gap-1">
+        <Pencil className="h-3 w-3" />
+        Click on <strong className="text-foreground">Working Days</strong>, <strong className="text-foreground">Orders</strong>, or other input values to edit them — salary recalculates instantly.
+      </div>
+
       {/* Filters */}
       <Card className="card-glow">
         <CardContent className="flex flex-wrap items-center gap-2 p-3">
@@ -309,7 +327,14 @@ export function DriversView({ runId, setRunId, onNavigate }: {
                       <div className="text-xs text-muted-foreground font-mono">{r.riderId}</div>
                     </td>
                     <td className="py-3 px-4 text-right tabular-nums">
-                      {r.completedOrders}
+                      <EditableCell
+                        value={r.completedOrders}
+                        onSave={async (val) => {
+                          const resp = await fetch('/api/drivers', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, field: 'completedOrders', value: val }) })
+                          if (resp.ok) { toast.success('Updated — recalculated'); reload() }
+                          else toast.error('Update failed')
+                        }}
+                      />
                       {r.extraOrders > 0 && (
                         <span className="ml-1 text-[10px] text-emerald-600">+{r.extraOrders}</span>
                       )}
@@ -318,7 +343,16 @@ export function DriversView({ runId, setRunId, onNavigate }: {
                       )}
                     </td>
                     <td className="py-3 px-4 text-right tabular-nums text-muted-foreground">{r.selectedTargetThreshold.toFixed(0)}</td>
-                    <td className="py-3 px-4 text-right tabular-nums">{r.actualWorkingDays.toFixed(0)}</td>
+                    <td className="py-3 px-4 text-right tabular-nums">
+                      <EditableCell
+                        value={r.actualWorkingDays}
+                        onSave={async (val) => {
+                          const resp = await fetch('/api/drivers', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, field: 'actualWorkingDays', value: val }) })
+                          if (resp.ok) { toast.success('Working days updated — salary recalculated'); reload() }
+                          else toast.error('Update failed')
+                        }}
+                      />
+                    </td>
                     <td className="py-3 px-4 text-right tabular-nums">{r.grossSalaryBeforePenalties.toFixed(2)}</td>
                     <td className="py-3 px-4 text-right tabular-nums text-cyan-600">{(r.segmentPayment || 0).toFixed(2)}</td>
                     <td className="py-3 px-4 text-right tabular-nums text-rose-600">{r.totalOtherPenalties.toFixed(2)}</td>
@@ -384,5 +418,84 @@ export function DriversView({ runId, setRunId, onNavigate }: {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// ====== Inline Editable Cell Component ======
+// Click to edit a numeric value, press Enter to save, Esc to cancel
+function EditableCell({ value, onSave, formatter }: {
+  value: number
+  onSave: (val: number) => Promise<void>
+  formatter?: (v: number) => string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [inputValue, setInputValue] = useState(String(value))
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
+  const displayValue = formatter ? formatter(value) : (Number.isInteger(value) ? String(value) : value.toFixed(0))
+
+  const handleSave = async () => {
+    const num = parseFloat(inputValue)
+    if (isNaN(num)) {
+      toast.error('Invalid number')
+      setEditing(false)
+      return
+    }
+    if (num === value) {
+      setEditing(false)
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(num)
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="inline-flex items-center gap-1">
+        <Input
+          ref={inputRef}
+          type="number"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave()
+            if (e.key === 'Escape') { setEditing(false); setInputValue(String(value)) }
+          }}
+          className="w-16 h-7 text-xs text-right tabular-nums"
+          disabled={saving}
+        />
+        {saving ? (
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+        ) : (
+          <button onClick={handleSave} className="text-emerald-600 hover:text-emerald-700">
+            <Check className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <span
+      onClick={() => { setEditing(true); setInputValue(String(value)) }}
+      className="cursor-pointer hover:bg-muted/60 hover:rounded px-1 py-0.5 -mx-1 -my-0.5 inline-block tabular-nums"
+      title="Click to edit"
+    >
+      {displayValue}
+      <Pencil className="inline h-2.5 w-2.5 ml-0.5 text-muted-foreground/40" />
+    </span>
   )
 }
