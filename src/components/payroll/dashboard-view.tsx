@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   Users, Wallet, TrendingUp, TrendingDown, Target, CarFront,
   AlertTriangle, Crown, Zap, Activity, FileText, Download,
-  ArrowUpRight, ArrowDownRight, Layers, Award, FileSpreadsheet, RefreshCcw
+  ArrowUpRight, ArrowDownRight, Layers, Award, FileSpreadsheet, RefreshCcw, Trash2
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -59,6 +59,48 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [clearing, setClearing] = useState(false)
+
+  const reload = () => {
+    setLoading(true)
+    const url = runId ? `/api/dashboard?runId=${runId}` : '/api/dashboard'
+    fetch(url)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.run) {
+          setData(d)
+          setRunId(d.run.id)
+        }
+      })
+      .finally(() => setLoading(false))
+  }
+
+  const handleClearData = async () => {
+    if (!confirm('⚠️ This will DELETE ALL payroll runs, driver results, income records, expenses, and driver counts.\n\nDrivers, rules, company profile, and traffic violations will be kept.\n\nAre you sure you want to clear ALL data?')) return
+    if (!confirm('This action CANNOT be undone. Click OK to proceed.')) return
+    setClearing(true)
+    try {
+      const resp = await fetch('/api/clear-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      })
+      const result = await resp.json()
+      if (resp.ok) {
+        alert(`✅ Data cleared:\n• ${result.deleted.driverResults} driver results\n• ${result.deleted.payrollRuns} payroll runs\n• ${result.deleted.incomeRecords} income records\n• ${result.deleted.expenses} expenses\n• ${result.deleted.driverCounts} driver counts\n\nUpload a new Excel file to start fresh.`)
+        setRunId('')
+        setData(null)
+        // Reload to show empty state
+        setTimeout(() => window.location.reload(), 500)
+      } else {
+        alert('Clear failed: ' + (result.error || result.message))
+      }
+    } catch (e: any) {
+      alert('Clear failed: ' + e.message)
+    } finally {
+      setClearing(false)
+    }
+  }
 
   const handleExportReport = async () => {
     setExporting(true)
@@ -89,17 +131,7 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
   }
 
   useEffect(() => {
-    queueMicrotask(() => setLoading(true))
-    const url = runId ? `/api/dashboard?runId=${runId}` : '/api/dashboard'
-    fetch(url)
-      .then(r => r.json())
-      .then(d => {
-        if (d?.run) {
-          setData(d)
-          setRunId(d.run.id)
-        }
-      })
-      .finally(() => setLoading(false))
+    reload()
   }, [runId])
 
   if (loading || !data) {
@@ -138,7 +170,7 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
             {ruleSummary.salaryMode === 'orders_based_mode' ? 'Orders-Based Mode' : 'Days-Prorated Mode'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Select value={runId ?? run.id} onValueChange={(v) => setRunId(v)}>
             <SelectTrigger className="w-[220px]">
               <SelectValue placeholder="Select run" />
@@ -162,6 +194,16 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
           >
             {exporting ? <RefreshCcw className="mr-1 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1 h-4 w-4" />}
             {exporting ? 'Generating...' : 'Export Management Report'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400"
+            onClick={handleClearData}
+            disabled={clearing}
+          >
+            {clearing ? <RefreshCcw className="mr-1 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-4 w-4" />}
+            {clearing ? 'Clearing...' : 'Clear All Data'}
           </Button>
         </div>
       </div>

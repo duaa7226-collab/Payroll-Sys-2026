@@ -173,10 +173,10 @@ export async function getActiveDriverCount(month: string): Promise<number> {
   })
   if (records.length > 0) return records.length
 
-  // 3. Fallback: count drivers from the matching payroll run
-  const label = monthToLabel(month)
+  // 3. Fallback: count drivers from the matching payroll run (handles abbreviated months like "Sep 2026")
+  const monthShort = monthToLabel(month).split(' ')[0].toLowerCase().substring(0, 3)
   const run = await db.payrollRun.findFirst({
-    where: { payrollMonth: { contains: label.split(' ')[0] } },
+    where: { payrollMonth: { contains: monthShort } },
     orderBy: { createdAt: 'desc' },
     include: { _count: { select: { results: true } } },
   })

@@ -48,9 +48,9 @@ export async function GET(req: NextRequest) {
 
   // ====== Fetch income + expenses for the same month ======
   const monthMap: Record<string, string> = {
-    'january': '01', 'february': '02', 'march': '03', 'april': '04',
-    'may': '05', 'june': '06', 'july': '07', 'august': '08',
-    'september': '09', 'october': '10', 'november': '11', 'december': '12',
+    'jan':'01','january':'01','feb':'02','february':'02','mar':'03','march':'03','apr':'04','april':'04',
+    'may':'05','jun':'06','june':'06','jul':'07','july':'07','aug':'08','august':'08',
+    'sep':'09','sept':'09','september':'09','oct':'10','october':'10','nov':'11','november':'11','dec':'12','december':'12',
   }
   const labelParts = payrollRun.payrollMonth.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/)
   let monthKey = ''
@@ -70,7 +70,14 @@ export async function GET(req: NextRequest) {
       const incomeRecords = await db.incomeRecord.findMany({ where: { month: monthKey } })
       const expenses = await db.expense.findMany({ where: { month: monthKey } })
 
-      if (incomeRecords.length > 0) {
+      // Read WR Amount Excl. VAT from payroll run's ruleSnapshot
+      let wrAmountExclVAT = 0
+      try {
+        const snapshot = JSON.parse(payrollRun.ruleSnapshot || '{}')
+        wrAmountExclVAT = snapshot.wrAmountExclVAT || 0
+      } catch {}
+
+      if (incomeRecords.length > 0 || wrAmountExclVAT > 0) {
         let totalIncome = 0
         let totalExpenses = 0
         let profitableCount = 0
@@ -80,6 +87,10 @@ export async function GET(req: NextRequest) {
           totalIncome += income.totalIncome
           totalExpenses += expAlloc.totalExpenses
           if (income.totalIncome - expAlloc.totalExpenses > 0) profitableCount++
+        }
+        // Override total income with WR "Amount Excl. VAT" if available
+        if (wrAmountExclVAT > 0) {
+          totalIncome = wrAmountExclVAT
         }
         const totalNetProfit = totalIncome - totalExpenses
 

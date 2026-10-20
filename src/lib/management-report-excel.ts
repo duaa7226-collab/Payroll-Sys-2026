@@ -20,7 +20,7 @@ export async function generateManagementReportExcel(runId?: string): Promise<Buf
   if (!run) run = await db.payrollRun.findFirst({ orderBy: { createdAt: 'desc' } })
   if (!run) throw new Error('No payroll run found')
 
-  const monthMap: Record<string, string> = { 'january':'01','february':'02','march':'03','april':'04','may':'05','june':'06','july':'07','august':'08','september':'09','october':'10','november':'11','december':'12' }
+  const monthMap: Record<string, string> = { 'january':'01','feb':'02','february':'02','mar':'03','march':'03','apr':'04','april':'04','may':'05','jun':'06','june':'06','jul':'07','july':'07','aug':'08','august':'08','sep':'09','sept':'09','september':'09','oct':'10','october':'10','nov':'11','november':'11','dec':'12','december':'12' }
   const parts = run.payrollMonth.toLowerCase().replace(/[^a-z0-9 ]/g,' ').trim().split(/\s+/)
   let month = new Date().toISOString().slice(0,7)
   for (let i=0;i<parts.length;i++){const m=monthMap[parts[i]];if(m){const y=parts.find(p=>/^\d{4}$/.test(p))||String(new Date().getFullYear());month=`${y}-${m}`;break}}

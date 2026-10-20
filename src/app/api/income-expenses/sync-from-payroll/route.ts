@@ -31,9 +31,23 @@ async function findPayrollRunForMonth(month: string): Promise<any | null> {
   })
   if (run) return run
 
-  // Fallback: try case-insensitive match
+  // Also try abbreviated month name (e.g., "Sep 2026" instead of "September 2026")
+  try {
+    const [y, m] = month.split('-')
+    const date = new Date(parseInt(y), parseInt(m) - 1, 1)
+    const shortLabel = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    run = await db.payrollRun.findFirst({
+      where: { payrollMonth: { equals: shortLabel } },
+      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { results: true } } },
+    })
+    if (run) return run
+  } catch {}
+
+  // Fallback: try case-insensitive match on month name part
+  const monthWord = label.split(' ')[0].toLowerCase()
   run = await db.payrollRun.findFirst({
-    where: { payrollMonth: { contains: label.split(' ')[0] } },
+    where: { payrollMonth: { contains: monthWord.substring(0, 3) } },
     orderBy: { createdAt: 'desc' },
     include: { _count: { select: { results: true } } },
   })

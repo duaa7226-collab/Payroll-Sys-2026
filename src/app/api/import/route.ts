@@ -193,6 +193,98 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // ====== AUTO-SYNC income data + default expenses for the Income vs Expenses module ======
+    // This ensures the dashboard KPIs (Income, Expenses, Net Profit) show immediately after import
+    try {
+      const monthMap: Record<string, string> = {
+        'jan':'01','january':'01','feb':'02','february':'02','mar':'03','march':'03','apr':'04','april':'04',
+        'may':'05','jun':'06','june':'06','jul':'07','july':'07','aug':'08','august':'08',
+        'sep':'09','sept':'09','september':'09','oct':'10','october':'10','nov':'11','november':'11','dec':'12','december':'12',
+      }
+      const labelParts = payrollMonth.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/)
+      let incomeMonth = ''
+      for (let i = 0; i < labelParts.length; i++) {
+        const m = monthMap[labelParts[i]]
+        if (m) {
+          const y = labelParts.find(p => /^\d{4}$/.test(p)) || String(new Date().getFullYear())
+          incomeMonth = `${y}-${m}`
+          break
+        }
+      }
+      if (!incomeMonth) incomeMonth = new Date().toISOString().slice(0, 7)
+
+      const company = 'HungerStation'
+      // Clear existing income records for this month/company
+      await db.incomeRecord.deleteMany({ where: { month: incomeMonth, companyName: company } })
+
+      // Create income records from DriverResult data
+      for (const raw of parsed.drivers) {
+        const driver = await db.driver.findUnique({ where: { riderId: raw.riderId } })
+        const dr = await db.driverResult.findFirst({ where: { payrollRunId: payrollRun.id, riderId: raw.riderId } })
+        if (!dr) continue
+        const penalties = JSON.parse(dr.penaltiesJson || '{}')
+
+        const incomeData = {
+          driverId: driver?.id || null,
+          driverName: dr.driverName,
+          companyName: company,
+          basicPayment: dr.uploadedBasicPayment || 0,
+          distancePayment: penalties.distance || 0,
+          segmentPayment: penalties.segment || 0,
+          acceptancePenalty: penalties.acceptance || 0,
+          contactPenalty: penalties.contact || 0,
+          stackingDeduction: penalties.stacking || 0,
+          declinedPenalty: penalties.declined || 0,
+          latePenalty: penalties.late || 0,
+          noShowPenalty: penalties.noshow || 0,
+          noShowSpecialPenalty: penalties.noshow_special || 0,
+          dailyAcceptancePenalty: penalties.daily_acceptance || 0,
+          missedDaysPenalty: penalties.missed_days || 0,
+          riderBalance: penalties.rider_balance || 0,
+          customFieldsJson: null,
+          sourceFile: file.name,
+          importedBy: 'auto-sync',
+        }
+        const { calculateIncome } = await import('@/lib/income-expenses-engine')
+        const calc = calculateIncome(incomeData)
+        await db.incomeRecord.create({
+          data: { month: incomeMonth, riderId: raw.riderId, ...incomeData, totalIncome: calc.totalIncome, totalPenalties: calc.totalPenalties },
+        })
+      }
+
+      // Set driver count
+      await db.driverCount.upsert({
+        where: { month: incomeMonth },
+        create: { month: incomeMonth, activeDriverCount: parsed.drivers.length, notes: `Auto-synced from ${payrollMonth}`, confirmedBy: 'auto-sync' },
+        update: { activeDriverCount: parsed.drivers.length, notes: `Auto-synced from ${payrollMonth}`, confirmedBy: 'auto-sync' },
+      })
+
+      // Auto-seed default expenses
+      const DEFAULT_EXPENSES = [
+        { name: 'Iqama', amount: 1000, type: 'per_driver' },
+        { name: 'Petrol', amount: 1200, type: 'per_driver' },
+        { name: 'Car rent', amount: 1500, type: 'per_driver' },
+        { name: 'Internet', amount: 115, type: 'per_driver' },
+        { name: 'Office', amount: 18000, type: 'shared' },
+        { name: 'Accommodation / flat', amount: 12000, type: 'shared' },
+        { name: 'Saudis salary and insurance', amount: 12900, type: 'shared' },
+        { name: 'Electricity and water', amount: 1000, type: 'shared' },
+      ]
+      const existingExp = await db.expense.findMany({ where: { month: incomeMonth }, select: { categoryName: true } })
+      const existingCats = new Set(existingExp.map(e => e.categoryName))
+      const allCats = await db.expenseCategory.findMany()
+      for (const def of DEFAULT_EXPENSES) {
+        if (!existingCats.has(def.name)) {
+          let cat = allCats.find(c => c.name === def.name)
+          if (!cat) cat = await db.expenseCategory.create({ data: { name: def.name, defaultAmount: def.amount, allocationType: def.type } })
+          await db.expense.create({ data: { month: incomeMonth, categoryId: cat.id, categoryName: cat.name, amount: def.amount, allocationType: def.type, notes: 'Auto-seeded during import', createdBy: 'auto-sync' } })
+        }
+      }
+      console.log(`Auto-synced ${parsed.drivers.length} income records + default expenses for ${incomeMonth}`)
+    } catch (syncErr) {
+      console.error('Auto-sync income/expenses failed (non-fatal):', syncErr)
+    }
+
     return NextResponse.json({
       success: true,
       payrollRunId: payrollRun.id,
