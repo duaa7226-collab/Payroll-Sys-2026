@@ -1,4 +1,11 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+import { PrismaClient } from '@/generated/prisma/client'
+
+const databaseUrl = process.env.DATABASE_URL ?? 'file:./db/custom.db'
+const adapter = new PrismaBetterSqlite3(
+  { url: databaseUrl },
+  { timestampFormat: 'unixepoch-ms' },
+)
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -7,7 +14,7 @@ const globalForPrisma = globalThis as unknown as {
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: ['query'],
+    adapter,
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
