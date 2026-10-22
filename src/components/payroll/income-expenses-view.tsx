@@ -589,16 +589,19 @@ function ExpensesList({ month, onReload }: any) {
   const [expenses, setExpenses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  const reload = () => {
+  const reload = useCallback(() => {
     setLoading(true)
     fetch(`/api/income-expenses/expenses?month=${month}`)
       .then(r => r.json())
       .then(d => setExpenses(d?.expenses ?? []))
       .catch(() => setExpenses([]))
       .finally(() => setLoading(false))
-  }
+  }, [month])
 
-  useEffect(() => { reload() }, [month])
+  useEffect(() => {
+    const timer = window.setTimeout(reload, 0)
+    return () => window.clearTimeout(timer)
+  }, [reload])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this expense?')) return
