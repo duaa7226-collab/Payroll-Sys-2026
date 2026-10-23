@@ -8,7 +8,10 @@ Set `DATABASE_URL` in the deployment secret store. Use the Supabase session/dire
 
 ```env
 DATABASE_URL="postgresql://prisma.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres"
+DIRECT_URL="postgresql://prisma.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres?sslmode=require"
 ```
+
+`prisma.config.ts` prefers `DIRECT_URL` for migration commands and falls back to `DATABASE_URL` for older deployments. If the database password contains URL-reserved characters, URL-encode them before saving the connection string.
 
 Never commit `.env`, passwords, Supabase service-role keys, or database URLs.
 
