@@ -45,8 +45,8 @@ npm run dev                 # http://localhost:3000
    - Insert the matching membership row (Prisma connects as `postgres` and may
      insert immediately; alternatively use the SQL editor as the service role):
      ```sql
-     INSERT INTO "app_user" ("id","email","name","role")
-     VALUES ('<auth-user-uuid>', 'owner@nokhaba.com', 'Owner', 'owner');
+     INSERT INTO "app_user" ("id","email","name","role","updated_at")
+     VALUES ('<auth-user-uuid>', 'owner@nokhaba.com', 'Owner', 'owner', now());
      ```
    - Subsequent members: create the Supabase user, add the `app_user` row with
      the right role (`owner`, `admin`, `viewer`), then send a password-reset
