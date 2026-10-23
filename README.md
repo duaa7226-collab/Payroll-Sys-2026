@@ -27,7 +27,7 @@ npm run dev                 # http://localhost:3000
 | `DATABASE_URL` | application server (Prisma) | Supabase transaction-pooler connection string. **Server-side only — never expose to the browser.** |
 | `DIRECT_URL` | Prisma migrations (`prisma.config.ts`) | Session-pooler connection (port 5432). |
 | `NEXT_PUBLIC_SUPABASE_URL` | browser + server + middleware | Supabase → Project Settings → API → Project URL. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser + server + middleware | The **anon/public** key. Never place the service-role key here or in any client bundle. |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser + server + middleware | The modern Supabase publishable key; the legacy anon key is also supported. Never use the service-role key. |
 
 `.env.example` contains placeholder values only. Real credentials live in `.env`
 (ignored by Git) and in your deployment secret store.

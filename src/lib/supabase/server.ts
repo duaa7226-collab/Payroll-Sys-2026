@@ -4,8 +4,8 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/rest\/v1\/?$/, '')
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 export const SUPABASE_ENV_CONFIGURED = Boolean(
   url && anonKey && !url.includes('<project-ref>') && !String(anonKey).startsWith('<')
@@ -14,7 +14,7 @@ export const SUPABASE_ENV_CONFIGURED = Boolean(
 export function getSupabaseServerClient(): SupabaseClient {
   if (!SUPABASE_ENV_CONFIGURED) {
     throw new Error(
-      'Supabase Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (see .env.example).'
+      'Supabase Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or the legacy anon key).'
     )
   }
   // cookies() is async on Next 16 and request-scoped; one store per request path.
