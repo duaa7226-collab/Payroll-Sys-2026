@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { generateIncomeExpensesExcel } from '@/lib/income-expenses-excel'
 
 export const runtime = 'nodejs'
@@ -6,6 +7,9 @@ export const dynamic = 'force-dynamic'
 
 // GET /api/income-expenses/export?month=2026-10
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const month = searchParams.get('month')

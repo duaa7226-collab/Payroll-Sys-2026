@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 // GET /api/manual-adjustments?riderId=...&type=...&category=...
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   const { searchParams } = new URL(req.url)
   const riderId = searchParams.get('riderId')
   const type = searchParams.get('type')
@@ -49,6 +53,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/manual-adjustments — create new
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   const body = await req.json()
   const { riderId, title, titleAr, amount, type, category, notes } = body
 
@@ -88,6 +95,9 @@ export async function POST(req: NextRequest) {
 
 // PUT /api/manual-adjustments — update
 export async function PUT(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   const body = await req.json()
   const { id, ...updates } = body
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
@@ -109,6 +119,9 @@ export async function PUT(req: NextRequest) {
 
 // DELETE
 export async function DELETE(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })

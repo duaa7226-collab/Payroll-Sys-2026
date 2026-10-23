@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 // GET /api/drivers?runId=...&search=...&sort=...&band=...&review=...
 // GET /api/drivers?all=1  — return ALL drivers from Driver table (not tied to a payroll run)
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const runId = searchParams.get('runId')
@@ -82,6 +86,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/drivers — create a new driver manually
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await req.json()
     const { riderId, name, contractName, vehicleType, bankName, iban, beneficiaryName } = body
@@ -127,6 +134,9 @@ export async function POST(req: NextRequest) {
 
 // PUT /api/drivers — update an existing driver
 export async function PUT(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await req.json()
     const { id, riderId, name, contractName, vehicleType, bankName, iban, beneficiaryName } = body
@@ -184,6 +194,9 @@ export async function PUT(req: NextRequest) {
 
 // DELETE /api/drivers?id=... — delete a driver
 export async function DELETE(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
@@ -215,6 +228,9 @@ export async function DELETE(req: NextRequest) {
 // Body: { id: "resultId", field: "actualWorkingDays", value: 30 }
 // Triggers instant recalculation of that driver's salary
 export async function PATCH(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await req.json()
     const { id, field, value } = body

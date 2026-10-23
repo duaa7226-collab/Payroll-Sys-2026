@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import * as XLSX from 'xlsx'
 
 export const runtime = 'nodejs'
@@ -160,6 +161,9 @@ function getHeadersInOrder(wb: XLSX.WorkBook, sheetName: string): string[] {
 // ============================================================================
 
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const formData = await req.formData()
     const templateFile = formData.get('templateFile') as File | null

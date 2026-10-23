@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 // GET /api/traffic-violations
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status') ?? ''
@@ -60,6 +64,9 @@ function monthlyForAgg(v: any): number {
 
 // POST /api/traffic-violations — create new violation
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await req.json()
     const {
@@ -123,6 +130,9 @@ export async function POST(req: NextRequest) {
 
 // PUT /api/traffic-violations — update violation
 export async function PUT(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await req.json()
     const {
@@ -190,6 +200,9 @@ export async function PUT(req: NextRequest) {
 
 // DELETE
 export async function DELETE(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')

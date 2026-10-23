@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
 import { getAllRiderTrafficDeductions, processInstallmentDeductions } from '@/lib/traffic-helpers'
@@ -10,6 +11,9 @@ import { calculateDriverSalary } from '@/lib/salary-engine'
 // POST /api/recalculate?runId=...
 // Recalculates ALL driver results using current data (custom bonuses, traffic, manual adjustments, rules)
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const runId = searchParams.get('runId')

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { getActiveRuleSnapshot, updateRuleValues } from '@/lib/rule-helpers'
 import { DEFAULT_RULE_DEFINITIONS, RULE_GROUPS } from '@/lib/rules'
 
 // GET /api/rules — list rule sets, with active one's full values
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   const { searchParams } = new URL(req.url)
   const onlyActive = searchParams.get('active') === 'true'
 
@@ -33,6 +37,9 @@ export async function GET(req: NextRequest) {
 
 // PUT /api/rules — update rule values for active rule set
 export async function PUT(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   const body = await req.json()
   const { ruleSetId, updates } = body as { ruleSetId: string; updates: Record<string, any> }
 

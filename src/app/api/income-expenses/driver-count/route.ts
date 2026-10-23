@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 export const runtime = 'nodejs'
@@ -6,6 +7,9 @@ export const dynamic = 'force-dynamic'
 
 // GET /api/income-expenses/driver-count?month=2026-08
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const month = searchParams.get('month')
@@ -22,6 +26,9 @@ export async function GET(req: NextRequest) {
 
 // POST — set driver count for a month
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await req.json()
     const { month, activeDriverCount, notes, confirm } = body

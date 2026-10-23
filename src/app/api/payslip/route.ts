@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { getActiveCustomBonuses } from '@/lib/custom-bonus-helpers'
 import { getActiveCustomDeductions } from '@/lib/custom-deduction-helpers'
 
 // GET /api/payslip?resultId=...
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   const { searchParams } = new URL(req.url)
   const resultId = searchParams.get('resultId')
 

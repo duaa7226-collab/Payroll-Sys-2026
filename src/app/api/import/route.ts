@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
 import { parseWorkbook } from '@/lib/excel-parser'
@@ -9,6 +10,9 @@ import * as path from 'path'
 
 // POST /api/import — accepts multipart/form-data with file + payrollMonth
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null

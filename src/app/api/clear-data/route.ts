@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 export const runtime = 'nodejs'
@@ -8,6 +9,9 @@ export const dynamic = 'force-dynamic'
 // Clears ALL payroll runs, driver results, income records, expenses, driver counts, exceptions
 // Keeps: drivers, rules, company profile, traffic violations, custom bonuses/deductions
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await req.json().catch(() => ({}))
     const { confirm } = body

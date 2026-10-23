@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { calculateIncome, calculateDriverExpenses, getActiveDriverCount } from '@/lib/income-expenses-engine'
 
@@ -7,6 +8,9 @@ export const dynamic = 'force-dynamic'
 
 // GET /api/income-expenses/dashboard?month=2026-08&company=HungerStation&driver=4643856
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const month = searchParams.get('month') || new Date().toISOString().slice(0, 7)

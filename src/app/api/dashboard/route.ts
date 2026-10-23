@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
 import { calculateIncome, calculateExpensesFromList, getActiveDriverCount } from '@/lib/income-expenses-engine'
 
 // GET /api/dashboard — executive dashboard KPIs + charts data + income/expense summary
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   const { searchParams } = new URL(req.url)
   const runId = searchParams.get('runId')
 

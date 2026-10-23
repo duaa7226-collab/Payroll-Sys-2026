@@ -9,6 +9,23 @@ datasource db {
 }
 
 // ============================================================
+// AUTH — application users linked to Supabase auth.users (uuid ids)
+// Single-organization model: membership here = org membership.
+// roles: owner | admin | viewer
+// ============================================================
+model AppUser {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  name      String?
+  role      String   @default("viewer")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_user")
+}
+
+// ============================================================
 // CENTRAL RULES CONTROL CENTER — single source of truth
 // ============================================================
 model PayrollRuleSet {

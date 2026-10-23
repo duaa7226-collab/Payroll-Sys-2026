@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { calculateIncome } from '@/lib/income-expenses-engine'
 
@@ -59,6 +60,9 @@ async function findPayrollRunForMonth(month: string): Promise<any | null> {
 // Syncs income data from the payroll run's DriverResult records into IncomeRecord records.
 // Also sets the driver count from the number of drivers in the payroll run.
 export async function POST(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await req.json()
     const { month, companyName, forceUpdate } = body
@@ -244,6 +248,9 @@ export async function POST(req: NextRequest) {
 
 // GET — check if a payroll run exists for the month (for the UI to show sync button)
 export async function GET(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   try {
     const { searchParams } = new URL(req.url)
     const month = searchParams.get('month')

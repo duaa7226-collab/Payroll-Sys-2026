@@ -35,6 +35,15 @@ import { ExceptionsView } from '@/components/payroll/exceptions-view'
 import { IncomeExpensesView } from '@/components/payroll/income-expenses-view'
 import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { LogOut, CircleUser } from 'lucide-react'
 
 // Dynamically import the Map Rider page (avoids pulling xlsx into the main bundle)
 const MapRiderPage = dynamic(() => import('./finance/map-rider/page').then(m => m.default), {
@@ -75,16 +84,45 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard')
   const [runId, setRunId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [session, setSession] = useState<{ email: string; role: string } | null>(null)
+  const [quickKpis, setQuickKpis] = useState<{ drivers: string; payroll: string; mode: string; rules: string }>({
+    drivers: '—', payroll: '—', mode: '—', rules: '—',
+  })
+  const [signingOut, setSigningOut] = useState(false)
 
-  // Load initial runId from latest payroll run
+  // Load session + latest run / KPIs
   useEffect(() => {
+    fetch('/api/auth/session')
+      .then(r => r.json())
+      .then(d => {
+        if (d?.user) setSession(d.user)
+      })
+      .catch(() => {})
     fetch('/api/dashboard')
       .then(r => r.json())
       .then(d => {
         if (d?.run?.id) setRunId(d.run.id)
+        const k = d?.kpis
+        const mode = String(d?.ruleSummary?.salaryMode ?? '').replace('_mode', '').replace(/^./, c => c.toUpperCase())
+        setQuickKpis({
+          drivers: k ? String(k.totalDrivers) : '—',
+          payroll: k && typeof k.totalNet === 'number' ? `SAR ${k.totalNet.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—',
+          mode: d?.ruleSummary?.salaryMode ? mode : '—',
+          rules: d?.ruleSummary?.ruleSetName ? 'Active' : '—',
+        })
       })
       .catch(() => {})
   }, [])
+
+  async function handleSignOut() {
+    setSigningOut(true)
+    try {
+      await fetch('/api/auth/sign-out', { method: 'POST' })
+    } catch {
+      // Continue to the login page regardless — cookies are cleared there.
+    }
+    window.location.href = '/login'
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-bg">
@@ -102,17 +140,45 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Center: Quick KPIs */}
-          <div className="ml-auto hidden items-center gap-2 md:flex">
-            <QuickStat icon={Users} label="Drivers" value="8" color="text-chart-1" />
-            <QuickStat icon={Target} label="Target" value="450" color="text-chart-2" />
-            <QuickStat icon={TrendingUp} label="Mode" value="Orders-Based" color="text-chart-3" />
-            <QuickStat icon={Shield} label="Rules" value="Active" color="text-emerald-600" />
+          {/* Center: Quick KPIs (real data from the latest payroll run) */}
+          <div className="ml-auto hidden items-center gap-2 lg:flex">
+            <QuickStat icon={Users} label="Drivers" value={quickKpis.drivers} color="text-chart-1" />
+            <QuickStat icon={Wallet} label="Net Payroll" value={quickKpis.payroll} color="text-chart-2" />
+            <QuickStat icon={TrendingUp} label="Mode" value={quickKpis.mode} color="text-chart-3" />
+            <QuickStat icon={Shield} label="Rules" value={quickKpis.rules} color="text-emerald-600" />
           </div>
+
+          {/* Account menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  'ml-auto grid h-10 w-10 place-items-center rounded-lg border border-border bg-card hover:bg-accent',
+                  signingOut && 'opacity-60'
+                )}
+                aria-label="Account menu"
+              >
+                <CircleUser className="h-5 w-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="truncate text-sm font-medium">{session?.email ?? 'Account'}</p>
+                  <p className="text-xs capitalize text-muted-foreground">Role: {session?.role ?? '—'}</p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => handleSignOut()} disabled={signingOut} className="text-destructive focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                {signingOut ? 'Signing out…' : 'Sign out'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Mobile sidebar toggle */}
           <button
-            className="ml-auto grid h-10 w-10 place-items-center rounded-lg border border-border bg-card md:hidden"
+            className="grid h-10 w-10 place-items-center rounded-lg border border-border bg-card md:hidden"
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Toggle navigation"
           >

@@ -9,7 +9,8 @@ const npmCommand = process.platform === "win32" ? "npx.cmd" : "npx"
 const result = spawnSync(npmCommand, ["next", "build"], {
   cwd: root,
   stdio: "inherit",
-  shell: false,
+  // .cmd shims on Windows require a shell; POSIX entries do not.
+  shell: process.platform === "win32",
 })
 
 if (result.status !== 0) {

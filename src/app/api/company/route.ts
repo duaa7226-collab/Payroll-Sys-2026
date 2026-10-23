@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 // GET /api/company
 export async function GET() {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth()
+  if (auth instanceof NextResponse) return auth
   let profile = await db.companyProfile.findFirst()
   if (!profile) {
     profile = await db.companyProfile.create({
@@ -17,6 +21,9 @@ export async function GET() {
 
 // PUT /api/company
 export async function PUT(req: NextRequest) {
+  // Authorization: organization membership + role (owner/admin can write)
+  const auth = await requireAuth({ write: true })
+  if (auth instanceof NextResponse) return auth
   const body = await req.json()
   // Whitelist allowed fields to prevent Prisma validation errors
   const allowedFields = [
