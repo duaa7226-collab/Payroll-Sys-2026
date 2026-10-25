@@ -32,7 +32,10 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
     return <div className="p-12 text-center text-muted-foreground">Loading payslip...</div>
   }
 
-  const { result, driver, company, traffic, penalties, customBonuses = [], customDeductions = [] } = data
+  const {
+    result, driver, company, traffic, penalties,
+    customBonuses = [], customDeductions = [], manualAdjustments = [],
+  } = data
 
   const handleDownload = async () => {
     setGenerating(true)
@@ -66,7 +69,8 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
     }
   }
 
-  const totalDeductions = result.totalOtherPenalties + result.trafficViolationsDeduction + result.missingOrderDeduction
+  // The payslip bottom line must reconcile: withheld = gross − net.
+  const totalDeductions = Math.max(0, result.grossSalaryBeforePenalties - result.finalNetSalary)
   const attainmentPct = result.selectedTargetThreshold > 0
     ? ((result.completedOrders / result.selectedTargetThreshold) * 100).toFixed(1)
     : '0'
@@ -80,6 +84,20 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
   const noshow = Math.abs(p.noshow || 0)
   const missedDays = Math.abs(p.missed_days || 0)
   const riderBalance = Math.abs(p.rider_balance || 0)
+
+  // Custom deductions are installment-aware — show what this month actually
+  // deducted, not the full remaining balance.
+  const customDeductionRows = customDeductions.map((cd: any) => ({
+    ar: cd.nameAr || cd.name,
+    en: cd.name,
+    amount: cd.monthlyDeduction ?? cd.amount,
+  }))
+  const manualBonusRows = manualAdjustments
+    .filter((a: any) => a.type === 'bonus')
+    .map((a: any) => ({ ar: a.titleAr || a.title, en: a.title, amount: a.amount }))
+  const manualDeductionRows = manualAdjustments
+    .filter((a: any) => a.type !== 'bonus')
+    .map((a: any) => ({ ar: a.titleAr || a.title, en: a.title, amount: a.amount }))
 
   // Driver info fields (6 separate bordered boxes, 2x3 grid)
   const driverInfoFields = [
@@ -111,7 +129,8 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
     { ar: 'غرامة الأيام المفقودة', en: 'Missed-Days Penalty', amount: missedDays },
     { ar: 'خصم رصيد السائق', en: 'Rider Balance Deduction', amount: riderBalance },
     ...(result.trafficViolationsDeduction > 0 ? [{ ar: 'المخالفات المرورية', en: 'Traffic Violations', amount: result.trafficViolationsDeduction }] : []),
-    ...customDeductions.map((cd: any) => ({ ar: cd.nameAr || cd.name, en: cd.name, amount: cd.amount })),
+    ...customDeductionRows,
+    ...manualDeductionRows,
   ]
 
   // Earnings items
@@ -120,6 +139,7 @@ export function PayslipPreview({ resultId }: { resultId: string }) {
     ...(result.bonusAmount > 0 ? [{ ar: 'العمولة الإضافية', en: `Bonus (Extra Orders: ${result.extraOrders} × ${result.appliedBonusPerExtra.toFixed(2)})`, amount: result.bonusAmount, sign: '+' as const }] : []),
     ...((result.segmentPayment || 0) > 0 ? [{ ar: 'دفعة الشريحة', en: 'Segment Payment', amount: result.segmentPayment, sign: '+' as const }] : []),
     ...customBonuses.map((cb: any) => ({ ar: cb.nameAr || cb.name, en: cb.name, amount: cb.amount, sign: '+' as const })),
+    ...manualBonusRows.map((mb: any) => ({ ar: mb.ar, en: mb.en, amount: mb.amount, sign: '+' as const })),
   ]
 
   return (

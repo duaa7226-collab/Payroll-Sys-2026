@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { calculateIncome, calculateDriverExpenses, getActiveDriverCount } from '@/lib/income-expenses-engine'
+import { calculateIncome, calculateExpensesFromList, getActiveDriverCount, type ExpenseAllocation } from '@/lib/income-expenses-engine'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -37,11 +37,20 @@ export async function GET(req: NextRequest) {
     // Fetch expenses for the month
     const expenses = await db.expense.findMany({ where: { month } })
 
-    // Calculate per-driver results
-    const driverResults = []
+    // Calculate per-driver results (expenses are allocated from the list we
+    // already fetched — this used to re-query expenses for every driver).
+    const driverResults: Array<{
+      id: string
+      riderId: string
+      driverName: string
+      companyName: string
+      income: ReturnType<typeof calculateIncome>
+      expenses: ExpenseAllocation
+      netProfit: number
+    }> = []
     for (const rec of incomeRecords) {
       const income = calculateIncome(rec)
-      const expenseAlloc = await calculateDriverExpenses(month, rec.riderId, activeDriverCount)
+      const expenseAlloc = calculateExpensesFromList(expenses, rec.riderId, activeDriverCount)
       const netProfit = income.totalIncome - expenseAlloc.totalExpenses
       driverResults.push({
         id: rec.id,

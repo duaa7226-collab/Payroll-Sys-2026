@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Building2, Save, Image as ImageIcon, Upload, X, User } from 'lucide-react'
+import { Building2, Save, Image as ImageIcon, Upload, X, LayoutPanelTop, ShieldCheck, Laptop } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
+import { DEFAULT_BRANDING, type Branding } from '@/lib/branding'
+import { BrandBanner, BrandMark } from '@/components/brand/brand-banner'
 
 export function CompanyBrandingView() {
   const [profile, setProfile] = useState<any>(null)
@@ -67,13 +69,20 @@ export function CompanyBrandingView() {
     return <div className="p-12 text-center text-muted-foreground">Loading...</div>
   }
 
+  // The public branding the sign-in screen and app header will render
+  const brandingPreview: Branding = {
+    name: profile.name || DEFAULT_BRANDING.name,
+    nameAr: profile.nameAr || DEFAULT_BRANDING.nameAr,
+    logo: profile.logo ?? null,
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Company Branding</h1>
           <p className="text-sm text-muted-foreground">
-            Centralized company profile · feeds payslips, exports, and print layouts
+            Centralized company profile · feeds the sign-in screen, app header, payslips and exports
           </p>
         </div>
         <Button onClick={handleSave} disabled={!dirty || saving}>
@@ -152,12 +161,70 @@ export function CompanyBrandingView() {
               </div>
               <div className="text-muted-foreground">
                 · PNG or JPG · max 2MB · transparent background recommended for logo<br />
+                · The logo appears above the sign-in form, on the sign-in banner and in the app header<br />
                 · Signatures: use black ink on white background for best results
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Sign-in screen & banner preview */}
+      <Card className="card-glow">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <LayoutPanelTop className="h-4 w-4" /> Sign-in Screen &amp; Banner
+          </CardTitle>
+          <CardDescription>
+            Uploaded logo, company name and Arabic name shown before anyone signs in
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+            <div className="overflow-hidden rounded-xl border border-border shadow-sm">
+              <div className="h-[380px]">
+                <BrandBanner branding={brandingPreview} />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border bg-muted/30 p-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Above the sign-in form
+                </div>
+                <div className="mt-2 flex items-center gap-2.5">
+                  <BrandMark branding={brandingPreview} size={40} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{brandingPreview.name}</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Payroll &amp; Operations · 2026 Enterprise
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/30 p-3">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Laptop className="h-3 w-3" /> App header
+                </div>
+                <div className="mt-2 flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2">
+                  <BrandMark branding={brandingPreview} size={28} />
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-semibold">{brandingPreview.name}</div>
+                    <div className="text-[10px] text-muted-foreground">Payroll &amp; Operations · 2026</div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0" />
+                Saving updates the public sign-in screen within 30 seconds. A square, transparent PNG gives the
+                crispest mark in the banner and the header.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Payslip Footer */}
       <Card className="card-glow">
@@ -272,7 +339,7 @@ function ImageUpload({ label, labelAr, value, onChange, inputRef, onFileSelect, 
   labelAr: string
   value: string | null
   onChange: (v: string | null) => void
-  inputRef: React.RefObject<HTMLInputElement>
+  inputRef: React.RefObject<HTMLInputElement | null>
   onFileSelect: (file: File) => void
   maxHeight: number
 }) {

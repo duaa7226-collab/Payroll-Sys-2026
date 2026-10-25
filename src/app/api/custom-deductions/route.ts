@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { parseStringArray } from '@/lib/utils'
 
 export async function GET() {
   // Authorization: organization membership + role (owner/admin can write)
@@ -9,7 +10,7 @@ export async function GET() {
   const deductions = await db.customDeduction.findMany({ orderBy: { createdAt: 'desc' } })
   const result = deductions.map(d => ({
     ...d,
-    targetRiderIds: d.targetRiderIds ? JSON.parse(d.targetRiderIds) : [],
+    targetRiderIds: parseStringArray(d.targetRiderIds),
     remainingBalance: d.installmentEnabled ? Math.max(0, d.amount - d.installmentTotalPaid) : d.amount,
     installmentRemainingMonths: d.installmentEnabled && d.installmentMonthlyAmount > 0
       ? Math.ceil(Math.max(0, d.amount - d.installmentTotalPaid) / d.installmentMonthlyAmount) : 0,
@@ -57,25 +58,51 @@ export async function PUT(req: NextRequest) {
   // Authorization: organization membership + role (owner/admin can write)
   const auth = await requireAuth({ write: true })
   if (auth instanceof NextResponse) return auth
-  const { id, ...updates } = await req.json()
+  const body = await req.json()
+  const { id } = body
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   const existing = await db.customDeduction.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const enableInstallment = updates.installmentEnabled === true
-  const monthlyAmt = enableInstallment ? parseFloat(updates.installmentMonthlyAmount || 0) : 0
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key)
+  const data: Record<string, any> = {}
+  if (has('name')) data.name = String(body.name)
+  if (has('nameAr')) data.nameAr = body.nameAr || null
+  if (has('description')) data.description = body.description || null
+  if (has('status')) data.status = body.status
+
+  const totalAmount = has('amount') ? parseFloat(body.amount) : existing.amount
+  if (!Number.isFinite(totalAmount)) return NextResponse.json({ error: 'Invalid amount' }, { status: 400 })
+  if (has('amount')) data.amount = totalAmount
+
+  // Never wipe rider targeting when only the status is toggled.
+  const applyToAll = has('applyToAll') ? body.applyToAll === true : existing.applyToAll
+  data.applyToAll = applyToAll
+  if (applyToAll) data.targetRiderIds = null
+  else if (has('targetRiderIds')) data.targetRiderIds = Array.isArray(body.targetRiderIds) ? JSON.stringify(body.targetRiderIds) : existing.targetRiderIds
+
+  // Toggling the status must not silently cancel an installment plan either.
+  const enableInstallment = has('installmentEnabled') ? body.installmentEnabled === true : existing.installmentEnabled
+  const monthlyAmt = enableInstallment
+    ? (body.installmentMonthlyAmount !== undefined
+        ? parseFloat(body.installmentMonthlyAmount)
+        : existing.installmentMonthlyAmount)
+    : 0
+  if (enableInstallment && (!Number.isFinite(monthlyAmt) || monthlyAmt <= 0)) {
+    return NextResponse.json({ error: 'Monthly installment amount must be > 0' }, { status: 400 })
+  }
+  if (enableInstallment && monthlyAmt >= totalAmount) {
+    return NextResponse.json({ error: 'Monthly installment must be less than total amount' }, { status: 400 })
+  }
+
   let installmentStatus = existing.installmentStatus
-  if (enableInstallment && existing.installmentStatus !== 'completed') installmentStatus = 'active'
-  else if (!enableInstallment) installmentStatus = 'none'
+  if (!enableInstallment) installmentStatus = 'none'
+  else if (existing.installmentStatus === 'none') installmentStatus = 'active'
 
   const deduction = await db.customDeduction.update({
     where: { id },
     data: {
-      name: updates.name, nameAr: updates.nameAr,
-      amount: updates.amount !== undefined ? parseFloat(updates.amount) : undefined,
-      description: updates.description, status: updates.status,
-      applyToAll: updates.applyToAll,
-      targetRiderIds: updates.targetRiderIds ? JSON.stringify(updates.targetRiderIds) : null,
+      ...data,
       installmentEnabled: enableInstallment,
       installmentMonthlyAmount: monthlyAmt,
       installmentStatus,

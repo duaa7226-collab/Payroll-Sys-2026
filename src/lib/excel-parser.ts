@@ -76,8 +76,10 @@ function num(v: any): number {
   return isNaN(n) ? 0 : n
 }
 
-export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
-  const wb = XLSX.read(buffer, { type: 'array' })
+export function parseWorkbook(buffer: ArrayBuffer | Buffer | Uint8Array): ParsedWorkbook {
+  // Accepts Buffer (Node) or ArrayBuffer (edge/browser) — xlsx reads both as a
+  // byte array, so no copy is needed.
+  const wb = XLSX.read(buffer as any, { type: 'array' })
   const warnings: string[] = []
   const sheetNames = wb.SheetNames
 
@@ -275,6 +277,11 @@ export function parseWorkbook(buffer: ArrayBuffer): ParsedWorkbook {
       riderBalance,
       segmentPayment: segmentCol ? num(row[segmentCol]) : 0,
       trafficViolationsTotal: 0, // filled separately by traffic violation lookup
+      // Filled by the import route from the rules engine (custom + manual items)
+      customBonuses: [],
+      customDeductions: [],
+      manualBonuses: [],
+      manualDeductions: [],
     })
   }
 

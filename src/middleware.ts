@@ -13,6 +13,7 @@ const PUBLIC_PATHS = new Set([
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true
+  if (pathname === '/api/branding') return true
   return pathname.startsWith('/api/auth/') || pathname.startsWith('/_next/')
 }
 
@@ -28,6 +29,11 @@ export async function middleware(request: NextRequest) {
   )
 
   if (!configured) {
+    // Company branding is public and database-backed, so the sign-in screen can
+    // still show the uploaded logo while auth is being configured.
+    if (pathname === '/api/branding') {
+      return NextResponse.next()
+    }
     if (pathname.startsWith('/api/')) {
       return NextResponse.json(
         { error: 'Authentication is not configured on this deployment (missing Supabase env vars).' },
@@ -43,6 +49,11 @@ export async function middleware(request: NextRequest) {
     redirect.searchParams.set('reason', 'not-configured')
     return NextResponse.redirect(redirect)
   }
+
+  // API handlers call requireAuth() themselves. Skipping the Supabase user
+  // lookup here removes a full network round-trip from every API request
+  // (the old flow authenticated twice per call).
+  if (pathname.startsWith('/api/')) return response
 
   const supabase = createServerClient(url!, anonKey!, {
     cookies: {

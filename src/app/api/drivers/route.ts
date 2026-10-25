@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
       case 'net_desc': results.sort((a, b) => b.finalNetSalary - a.finalNetSalary); break
       case 'net_asc': results.sort((a, b) => a.finalNetSalary - b.finalNetSalary); break
       case 'orders_desc': results.sort((a, b) => b.completedOrders - a.completedOrders); break
-      case 'orders_asc': results.sort((a, b) => a.completedOrders - a.completedOrders); break
+      case 'orders_asc': results.sort((a, b) => a.completedOrders - b.completedOrders); break
       case 'penalty_desc': results.sort((a, b) => b.totalOtherPenalties - a.totalOtherPenalties); break
       case 'name_asc': results.sort((a, b) => a.driverName.localeCompare(b.driverName)); break
     }
@@ -278,58 +278,38 @@ export async function PATCH(req: NextRequest) {
     })
 
     // ====== Recalculate this driver's salary on the fly ======
-    // We need to re-run the salary engine with the updated input
+    // Uses the exact same input reconstruction as full recalculation, so a
+    // single-row edit can never produce different numbers than a full run.
     const { calculateDriverSalary } = await import('@/lib/salary-engine')
     const { getActiveRuleSnapshot } = await import('@/lib/rule-helpers')
     const { getAllRiderTrafficDeductions } = await import('@/lib/traffic-helpers')
+    const { getAllRiderManualAdjustments } = await import('@/lib/manual-adjustment-helpers')
     const { getActiveCustomBonuses, getBonusesForRider } = await import('@/lib/custom-bonus-helpers')
     const { getActiveCustomDeductions, getDeductionsForRider } = await import('@/lib/custom-deduction-helpers')
+    const { buildRawFromResult } = await import('@/lib/payroll-persist')
 
     const activeRules = await getActiveRuleSnapshot()
-    const trafficByRider = await getAllRiderTrafficDeductions([existing.riderId])
-    const customBonuses = await getActiveCustomBonuses()
-    const customDeductions = await getActiveCustomDeductions()
+    const [trafficByRider, manualByRider, customBonuses, customDeductions] = await Promise.all([
+      getAllRiderTrafficDeductions([existing.riderId]),
+      getAllRiderManualAdjustments([existing.riderId]),
+      getActiveCustomBonuses(),
+      getActiveCustomDeductions(),
+    ])
 
-    // Reconstruct penalties from penaltiesJson (short → long key mapping)
-    const storedPenalties = JSON.parse(existing.penaltiesJson || '{}')
-    const penalties = {
-      acceptance_rate_penalties: storedPenalties.acceptance ?? 0,
-      contact_rate_penalties: storedPenalties.contact ?? 0,
-      stacking_deduction: storedPenalties.stacking ?? 0,
-      declined_penalties_day_logic: storedPenalties.declined ?? 0,
-      late_penalty: storedPenalties.late ?? 0,
-      no_show_penalty: storedPenalties.noshow ?? 0,
-      no_show_penalty_special_cities: storedPenalties.noshow_special ?? 0,
-      daily_acceptance_rate_penalty: storedPenalties.daily_acceptance ?? 0,
-      distance_payment: storedPenalties.distance ?? 0,
-      missed_days_penalty: storedPenalties.missed_days ?? 0,
-      segment_payment: storedPenalties.segment ?? 0,
-    }
+    const raw = buildRawFromResult(updated, {
+      trafficByRider,
+      manualByRider,
+      customBonuses,
+      customDeductions,
+      riderBonuses: (riderId: string) =>
+        getBonusesForRider(customBonuses, riderId).map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount })),
+      riderDeductions: (riderId: string) =>
+        getDeductionsForRider(customDeductions, riderId).map(d => ({
+          name: d.name, nameAr: d.nameAr, amount: d.amount, monthlyDeduction: d.monthlyDeduction,
+        })),
+    })
 
-    const raw = {
-      riderId: existing.riderId,
-      name: existing.driverName,
-      contractName: existing.contractName,
-      vehicleType: field === 'vehicleType' ? parsedValue : existing.vehicleType,
-      inactiveReason: field === 'inactiveReason' ? parsedValue : (existing.inactiveReason || 'Active'),
-      completedOrders: field === 'completedOrders' ? parsedValue : existing.completedOrders,
-      uploadedBasicPayment: existing.uploadedBasicPayment,
-      uploadedCityPayment: existing.uploadedCityPayment,
-      actualWorkingDays: field === 'actualWorkingDays' ? parsedValue : existing.actualWorkingDays,
-      fullyWorkingDays: field === 'fullyWorkingDays' ? parsedValue : existing.fullyWorkingDays,
-      workingHours: field === 'workingHours' ? parsedValue : existing.workingHours,
-      totalMonthlyWorkingHours: field === 'totalMonthlyWorkingHours' ? parsedValue : existing.totalMonthlyWorkingHours,
-      penalties,
-      carDeduction: storedPenalties.car_deduction ?? 0,
-      tgaDeduction: storedPenalties.tga_deduction ?? 0,
-      riderBalance: storedPenalties.rider_balance ?? 0,
-      segmentPayment: storedPenalties.segment ?? existing.segmentPayment ?? 0,
-      trafficViolationsTotal: trafficByRider.get(existing.riderId)?.total ?? 0,
-      customBonuses: getBonusesForRider(customBonuses, existing.riderId).map(b => ({ name: b.name, nameAr: b.nameAr, amount: b.amount })),
-      customDeductions: getDeductionsForRider(customDeductions, existing.riderId).map(d => ({ name: d.name, nameAr: d.nameAr, amount: d.amount, monthlyDeduction: d.monthlyDeduction })),
-    }
-
-    const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, existing.payrollMonth)
+    const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, updated.payrollMonth)
 
     // Save recalculated result
     const recalculated = await db.driverResult.update({

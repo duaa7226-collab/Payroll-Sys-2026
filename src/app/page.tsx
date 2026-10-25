@@ -21,6 +21,7 @@ import {
   Activity,
   ArrowRightLeft,
   Scale,
+  Receipt,
 } from 'lucide-react'
 import { DashboardView } from '@/components/payroll/dashboard-view'
 import { DriversView } from '@/components/payroll/drivers-view'
@@ -33,8 +34,11 @@ import { AuditLogsView } from '@/components/payroll/audit-logs-view'
 import { CompanyBrandingView } from '@/components/payroll/company-branding-view'
 import { ExceptionsView } from '@/components/payroll/exceptions-view'
 import { IncomeExpensesView } from '@/components/payroll/income-expenses-view'
+import { ManualAdjustmentsView } from '@/components/payroll/manual-adjustments-view'
 import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
+import { DEFAULT_BRANDING, type Branding } from '@/lib/branding'
+import { BrandMark } from '@/components/brand/brand-banner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,6 +59,7 @@ type TabId =
   | 'dashboard'
   | 'drivers'
   | 'drivers_registration'
+  | 'manual_adjustments'
   | 'income_expenses'
   | 'rules'
   | 'payslips'
@@ -69,6 +74,7 @@ const TABS: { id: TabId; label: string; labelAr: string; icon: any; group: strin
   { id: 'dashboard', label: 'Dashboard', labelAr: 'لوحة القيادة', icon: LayoutDashboard, group: 'main' },
   { id: 'drivers', label: 'Driver Results', labelAr: 'نتائج السائقين', icon: Users, group: 'main' },
   { id: 'drivers_registration', label: 'Drivers Registration', labelAr: 'تسجيل السائقين', icon: UserPlus, group: 'main' },
+  { id: 'manual_adjustments', label: 'Manual Adjustments', labelAr: 'التعديلات اليدوية', icon: Receipt, group: 'main' },
   { id: 'payslips', label: 'Payslips', labelAr: 'قسائم الرواتب', icon: FileText, group: 'main' },
   { id: 'income_expenses', label: 'Income vs Expenses', labelAr: 'دخل ومصروفات', icon: Scale, group: 'main' },
   { id: 'exceptions', label: 'Exceptions', labelAr: 'الاستثناءات', icon: AlertTriangle, group: 'main' },
@@ -89,9 +95,16 @@ export default function Home() {
     drivers: '—', payroll: '—', mode: '—', rules: '—',
   })
   const [signingOut, setSigningOut] = useState(false)
+  const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING)
 
-  // Load session + latest run / KPIs
+  // Load session + latest run / KPIs + company branding
   useEffect(() => {
+    fetch('/api/branding')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (d?.branding) setBranding(d.branding as Branding)
+      })
+      .catch(() => {})
     fetch('/api/auth/session')
       .then(r => r.json())
       .then(d => {
@@ -129,14 +142,12 @@ export default function Home() {
       {/* Top Header */}
       <header className="sticky top-0 z-40 border-b border-border bg-card/80 backdrop-blur-xl">
         <div className="flex h-16 items-center gap-4 px-4 md:px-6">
-          {/* Logo / Brand */}
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-              <Wallet className="h-5 w-5" />
-            </div>
-            <div className="hidden sm:block">
-              <div className="text-sm font-semibold tracking-tight">Nokhaba Payroll</div>
-              <div className="text-[11px] text-muted-foreground">2026 Enterprise · Saudi Logistics</div>
+          {/* Company logo / brand */}
+          <div className="flex min-w-0 items-center gap-3">
+            <BrandMark branding={branding} size={40} />
+            <div className="hidden min-w-0 sm:block">
+              <div className="truncate text-sm font-semibold tracking-tight">{branding.name}</div>
+              <div className="text-[11px] text-muted-foreground">Payroll &amp; Operations · 2026</div>
             </div>
           </div>
 
@@ -224,6 +235,7 @@ export default function Home() {
           {activeTab === 'dashboard' && <DashboardView runId={runId} setRunId={setRunId} onNavigate={setActiveTab} />}
           {activeTab === 'drivers' && <DriversView runId={runId} setRunId={setRunId} onNavigate={setActiveTab} />}
           {activeTab === 'drivers_registration' && <DriversRegistrationView />}
+          {activeTab === 'manual_adjustments' && <ManualAdjustmentsView />}
           {activeTab === 'income_expenses' && <IncomeExpensesView />}
           {activeTab === 'rules' && <RulesControlCenter />}
           {activeTab === 'payslips' && <PayslipsView runId={runId} />}

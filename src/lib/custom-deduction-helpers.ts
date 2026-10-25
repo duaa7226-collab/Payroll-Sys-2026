@@ -1,4 +1,5 @@
 import { db } from './db'
+import { parseStringArray } from './utils'
 
 export interface CustomDeductionItem {
   id: string
@@ -25,7 +26,7 @@ export async function getActiveCustomDeductions(): Promise<CustomDeductionItem[]
     return {
       id: d.id, name: d.name, nameAr: d.nameAr, amount: d.amount,
       applyToAll: d.applyToAll,
-      targetRiderIds: d.targetRiderIds ? JSON.parse(d.targetRiderIds) : [],
+      targetRiderIds: parseStringArray(d.targetRiderIds),
       installmentEnabled: d.installmentEnabled,
       installmentMonthlyAmount: d.installmentMonthlyAmount,
       installmentTotalPaid: d.installmentTotalPaid,

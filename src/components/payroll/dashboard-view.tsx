@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import {
   Users, Wallet, TrendingUp, TrendingDown, Target, CarFront,
   AlertTriangle, Crown, Zap, Activity, FileText, Download,
-  ArrowUpRight, ArrowDownRight, Layers, Award, FileSpreadsheet, RefreshCcw, Trash2
+  ArrowUpRight, ArrowDownRight, Layers, Award, FileSpreadsheet, RefreshCcw, Trash2,
+  CalendarDays
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -376,6 +377,9 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
         </CardContent>
       </Card>
 
+      {/* Upload history — every imported workbook, archived in Supabase */}
+      <UploadHistoryCard />
+
       {/* Charts grid */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Salary by Driver — Top 10 */}
@@ -682,6 +686,127 @@ export function DashboardView({ runId, setRunId, onNavigate }: {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return '0 KB'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function UploadHistoryCard() {
+  const [uploads, setUploads] = useState<any[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [totalBytes, setTotalBytes] = useState(0)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/uploads?limit=24')
+      .then(r => r.json())
+      .then(d => {
+        setUploads(d?.uploads ?? [])
+        setTotal(d?.total ?? 0)
+        setTotalBytes(d?.totalBytes ?? 0)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleDelete = async (file: any) => {
+    if (!confirm(`Delete the archived workbook "${file.fileName}" (${file.payrollMonth})?\n\nThe payroll results stay in the database — only the original Excel file is removed. This cannot be undone.`)) return
+    setDeletingId(file.id)
+    try {
+      const resp = await fetch(`/api/uploads/${file.id}`, { method: 'DELETE' })
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}))
+        alert('Delete failed: ' + (err.error || err.message || resp.status))
+        return
+      }
+      setUploads(prev => prev.filter(u => u.id !== file.id))
+      setTotal(prev => Math.max(0, prev - 1))
+      setTotalBytes(prev => Math.max(0, prev - (file.size || 0)))
+    } catch (e: any) {
+      alert('Delete failed: ' + (e?.message || 'unknown error'))
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  return (
+    <Card className="card-glow">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center justify-between gap-2 text-base">
+          <span className="flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4 text-blue-600" />
+            Upload History
+          </span>
+          <Badge variant="outline" className="text-[10px]">
+            {uploads.length === total ? `${total} file${total === 1 ? '' : 's'}` : `${uploads.length} of ${total} files`} · {formatBytes(totalBytes)}
+          </Badge>
+        </CardTitle>
+        <CardDescription>
+          Original monthly workbooks are archived in Supabase and kept until you delete them — open any month again to verify what was uploaded.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {loading ? (
+          <div className="py-6 text-center text-xs text-muted-foreground">Loading uploads…</div>
+        ) : uploads.length === 0 ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            <FileSpreadsheet className="mx-auto mb-2 h-8 w-8 opacity-40" />
+            No workbooks archived yet — every monthly import is saved here automatically.
+          </div>
+        ) : (
+          <div className="divide-y divide-border/60">
+            {uploads.map((file: any) => (
+              <div key={file.id} className="flex flex-wrap items-center gap-3 py-2.5">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-500/10 text-blue-600">
+                  <FileSpreadsheet className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{file.fileName}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarDays className="h-3 w-3" /> {file.payrollMonth}
+                    </span>
+                    <span>{file.driverCount} drivers</span>
+                    <span>{formatBytes(file.size)}</span>
+                    <span>{new Date(file.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    {!file.payrollRunId && <Badge variant="outline" className="text-[9px]">results cleared</Badge>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`/api/uploads/${file.id}`} download={file.fileName}>
+                      <Download className="mr-1 h-3.5 w-3.5" /> Download
+                    </a>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(file)}
+                    disabled={deletingId === file.id}
+                    title="Delete this archived workbook"
+                  >
+                    {deletingId === file.id
+                      ? <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
+                      : <Trash2 className="h-3.5 w-3.5 text-rose-500" />}
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {total > uploads.length && (
+              <div className="pt-2 text-center text-[11px] text-muted-foreground">
+                Showing the latest {uploads.length} of {total} archived workbooks — older months are still stored.
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

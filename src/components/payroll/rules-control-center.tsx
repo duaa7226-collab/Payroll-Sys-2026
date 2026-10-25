@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/accordion'
 import { toast } from 'sonner'
 import { safeFetchJson } from '@/lib/safe-fetch'
+import { recalculateLatestRun } from '@/lib/recalculate-client'
 import { cn } from '@/lib/utils'
 
 const GROUP_LABELS: Record<string, { en: string; ar: string; desc: string }> = {
@@ -81,6 +82,11 @@ export function RulesControlCenter() {
         setDirty(false)
         // Refresh snapshot
         setData((d: any) => ({ ...d, snapshot: { ...values } }))
+        // Apply the new rules to the latest payroll run straight away — one
+        // calculation, awaited, with the real result reported.
+        const recalc = await recalculateLatestRun()
+        if (recalc.ok) toast.success(`Payroll recalculated — ${recalc.driverCount} drivers`)
+        else toast.warning(recalc.message || 'Saved, but payroll could not be recalculated yet')
       } else {
         toast.error('Save failed')
       }
@@ -252,14 +258,10 @@ function CustomBonusesSection() {
     safeFetchJson('/api/drivers?all=1', { results: [] }).then(dr => setDrivers(dr?.results ?? []))
   }, [])
 
-  const triggerRecalc = () => {
-    safeFetchJson('/api/dashboard', null).then(d => {
-      if (d?.run?.id) {
-        fetch(`/api/recalculate?runId=${d.run.id}`, { method: 'POST' })
-          .then(() => toast.success('Payroll recalculated with new bonuses'))
-          .catch(() => toast.error('Recalculation failed'))
-      }
-    })
+  const triggerRecalc = async () => {
+    const recalc = await recalculateLatestRun()
+    if (recalc.ok) toast.success('Payroll recalculated with the new bonuses')
+    else toast.error(recalc.message || 'Recalculation failed')
   }
 
   const handleAdd = async () => {
@@ -275,7 +277,7 @@ function CustomBonusesSection() {
         toast.success(`Bonus "${newName}" added — recalculating...`)
         setNewName(''); setNewNameAr(''); setNewAmount(''); setAdding(false); setApplyToAll(true); setSelectedDrivers([])
         reload()
-        triggerRecalc()
+        await triggerRecalc()
       } else { toast.error('Add failed') }
     } finally { setSaving(false) }
   }
@@ -456,14 +458,10 @@ function CustomDeductionsSection() {
     safeFetchJson('/api/drivers?all=1', { results: [] }).then(dr => setDrivers(dr?.results ?? []))
   }, [])
 
-  const triggerRecalc = () => {
-    safeFetchJson('/api/dashboard', null).then(d => {
-      if (d?.run?.id) {
-        fetch(`/api/recalculate?runId=${d.run.id}`, { method: 'POST' })
-          .then(() => toast.success('Payroll recalculated with new deductions'))
-          .catch(() => toast.error('Recalculation failed'))
-      }
-    })
+  const triggerRecalc = async () => {
+    const recalc = await recalculateLatestRun()
+    if (recalc.ok) toast.success('Payroll recalculated with the new deductions')
+    else toast.error(recalc.message || 'Recalculation failed')
   }
 
   const handleAdd = async () => {
@@ -486,7 +484,7 @@ function CustomDeductionsSection() {
         setNewName(''); setNewNameAr(''); setNewAmount(''); setAdding(false)
         setApplyToAll(true); setSelectedDrivers([]); setInstallmentEnabled(false); setInstallmentMonthly('')
         reload()
-        triggerRecalc()
+        await triggerRecalc()
       } else { const e = await resp.json().catch(() => ({})); toast.error(e.error || 'Add failed') }
     } finally { setSaving(false) }
   }

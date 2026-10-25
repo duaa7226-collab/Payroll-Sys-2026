@@ -36,7 +36,7 @@ export async function generatePayslipPDFFromElement(element: HTMLElement): Promi
     const pageHeight = pdf.internal.pageSize.getHeight()
     pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST')
 
-    const blobUrl = pdf.output('bloburl')
+    const blobUrl = String(pdf.output('bloburl'))
     const data = (element as any).__payslipData
     const download = () => {
       const result = data?.result
@@ -113,8 +113,9 @@ function earningsRow(ar: string, en: string, amount: number, sign: '' | '+' = ''
 
 // Build the payslip HTML string — EXACT clone of Elite Development reference
 function buildPayslipHTML(data: any): string {
-  const { result, driver, company, traffic, penalties } = data
-  const totalDeductions = result.totalOtherPenalties + result.trafficViolationsDeduction + result.missingOrderDeduction
+  const { result, driver, company, traffic, penalties, manualAdjustments = [] } = data
+  // Reconciles with net pay: withheld = gross − net.
+  const totalDeductions = Math.max(0, result.grossSalaryBeforePenalties - result.finalNetSalary)
   const attainmentPct = result.selectedTargetThreshold > 0
     ? ((result.completedOrders / result.selectedTargetThreshold) * 100).toFixed(1)
     : '0'
@@ -166,6 +167,15 @@ function buildPayslipHTML(data: any): string {
       '+'
     ))
   }
+  // 5. Manual bonus adjustments
+  for (const mb of (manualAdjustments as any[]).filter(a => a.type === 'bonus')) {
+    earningsRows.push(earningsRow(
+      mb.titleAr || mb.title,
+      mb.title,
+      mb.amount,
+      '+'
+    ))
+  }
 
   // ===== Deductions rows — ALL ALWAYS SHOWN (matching reference) =====
   const deductionRows: string[] = []
@@ -187,9 +197,13 @@ function buildPayslipHTML(data: any): string {
   if (result.trafficViolationsDeduction > 0) {
     deductionRows.push(deductionRow('المخالفات المرورية', 'Traffic Violations', result.trafficViolationsDeduction))
   }
-  // 9. Custom deductions
+  // 9. Custom deductions (installment-aware: monthly amount, not the total)
   for (const cd of (data.customDeductions || [])) {
-    deductionRows.push(deductionRow(cd.nameAr || cd.name, cd.name, cd.amount))
+    deductionRows.push(deductionRow(cd.nameAr || cd.name, cd.name, cd.monthlyDeduction ?? cd.amount))
+  }
+  // 10. Manual deduction adjustments
+  for (const md of (manualAdjustments as any[]).filter(a => a.type !== 'bonus')) {
+    deductionRows.push(deductionRow(md.titleAr || md.title, md.title, md.amount))
   }
 
   return `

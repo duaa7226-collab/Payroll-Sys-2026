@@ -2,302 +2,474 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { getActiveRuleSnapshot } from '@/lib/rule-helpers'
-import { parseWorkbook } from '@/lib/excel-parser'
-import { calculateDriverSalary } from '@/lib/salary-engine'
-import { getAllRiderTrafficDeductions } from '@/lib/traffic-helpers'
-import * as fs from 'fs'
+import { parseWorkbook, type ParsedWorkbook } from '@/lib/excel-parser'
+import { calculateDriverSalary, type DriverResultCalc, type RawDriverData } from '@/lib/salary-engine'
+import { getAllRiderTrafficDeductions, processInstallmentDeductions } from '@/lib/traffic-helpers'
+import { getAllRiderManualAdjustments } from '@/lib/manual-adjustment-helpers'
+import { getActiveCustomBonuses, getBonusesForRider } from '@/lib/custom-bonus-helpers'
+import { getActiveCustomDeductions, getDeductionsForRider, processCustomDeductionInstallments } from '@/lib/custom-deduction-helpers'
+import { calculateIncome } from '@/lib/income-expenses-engine'
+import { chunk, driverExceptionRows, driverResultCreateData, runWithConcurrency, sumTotals } from '@/lib/payroll-persist'
+import { PAYROLL_JOB, withJobLock } from '@/lib/job-lock'
+import { promises as fs } from 'fs'
 import * as path from 'path'
+
+export const runtime = 'nodejs'
+// Large workbooks take longer than the default route budget when the database
+// is remote; keep the handler alive instead of dropping the response.
+export const maxDuration = 120
+
+const COMPANY_NAME = 'HungerStation'
+// Guard rail for the archived original file (kept in Supabase as BYTEA).
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+const DEFAULT_EXPENSES = [
+  { name: 'Iqama', amount: 1000, type: 'per_driver' },
+  { name: 'Petrol', amount: 1200, type: 'per_driver' },
+  { name: 'Car rent', amount: 1500, type: 'per_driver' },
+  { name: 'Internet', amount: 115, type: 'per_driver' },
+  { name: 'Office', amount: 18000, type: 'shared' },
+  { name: 'Accommodation / flat', amount: 12000, type: 'shared' },
+  { name: 'Saudis salary and insurance', amount: 12900, type: 'shared' },
+  { name: 'Electricity and water', amount: 1000, type: 'shared' },
+]
+
+const MONTH_INDEX: Record<string, string> = {
+  jan: '01', january: '01', feb: '02', february: '02', mar: '03', march: '03',
+  apr: '04', april: '04', may: '05', jun: '06', june: '06', jul: '07', july: '07',
+  aug: '08', august: '08', sep: '09', sept: '09', september: '09',
+  oct: '10', october: '10', nov: '11', november: '11', dec: '12', december: '12',
+}
+
+/** "May 2026" → "2026-05" (falls back to the current month). */
+function monthKeyFromLabel(label: string): string {
+  const parts = label.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/)
+  const year = parts.find(p => /^\d{4}$/.test(p)) || String(new Date().getFullYear())
+  for (const part of parts) {
+    const month = MONTH_INDEX[part]
+    if (month) return `${year}-${month}`
+  }
+  return new Date().toISOString().slice(0, 7)
+}
+
+async function saveUploadedWorkbook(fileName: string, buffer: Buffer) {
+  try {
+    const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'upload')
+    await fs.mkdir(uploadDir, { recursive: true })
+    const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_')
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    await fs.writeFile(path.join(uploadDir, `${stamp}_${safeName}`), buffer)
+  } catch (e) {
+    // Reference copies are nice-to-have; never fail an import over them.
+    console.warn('Could not save uploaded workbook to disk:', e)
+  }
+}
 
 // POST /api/import — accepts multipart/form-data with file + payrollMonth
 export async function POST(req: NextRequest) {
   // Authorization: organization membership + role (owner/admin can write)
   const auth = await requireAuth({ write: true })
   if (auth instanceof NextResponse) return auth
-  try {
-    const formData = await req.formData()
-    const file = formData.get('file') as File | null
-    const payrollMonth = (formData.get('payrollMonth') as string) || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer())
-
-    // Save uploaded file to disk for future reference (sync, audit, etc.)
+  return withJobLock(PAYROLL_JOB, 'Excel import & calculation', async () => {
     try {
-      const uploadDir = '/home/z/my-project/upload'
-      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const savePath = path.join(uploadDir, safeName)
-      fs.writeFileSync(savePath, buffer)
-    } catch (e) {
-      console.warn('Could not save uploaded file to disk:', e)
-    }
+      const formData = await req.formData()
+      const file = formData.get('file') as File | null
+      const payrollMonth = String(formData.get('payrollMonth') || '').trim()
+        || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
-    let parsed
-    try {
-      parsed = parseWorkbook(buffer)
-    } catch (e: any) {
-      return NextResponse.json({
-        error: 'Workbook parsing failed',
-        message: e.message,
-        warnings: [],
-      }, { status: 422 })
-    }
+      if (!file) {
+        return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
+      }
+      if (file.size === 0) {
+        return NextResponse.json({ error: 'The uploaded file is empty' }, { status: 400 })
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        return NextResponse.json(
+          { error: 'File too large', message: `Workbooks are limited to ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB.` },
+          { status: 413 }
+        )
+      }
 
-    const activeRules = await getActiveRuleSnapshot()
+      const buffer = Buffer.from(await file.arrayBuffer())
 
-    // Get traffic violations per driver (installment-aware: only counts monthly portion)
-    const allRiderIds = parsed.drivers.map(d => d.riderId)
-    const trafficByRider = await getAllRiderTrafficDeductions(allRiderIds)
+      // Keep a reference copy (best effort, non-blocking failures).
+      await saveUploadedWorkbook(file.name, buffer)
 
-    // Enrich raw drivers with traffic violations
-    for (const d of parsed.drivers) {
-      d.trafficViolationsTotal = trafficByRider.get(d.riderId)?.total ?? 0
-    }
+      let parsed: ParsedWorkbook
+      try {
+        parsed = parseWorkbook(buffer)
+      } catch (e: any) {
+        return NextResponse.json(
+          {
+            error: 'Workbook parsing failed',
+            message: e.message,
+            warnings: [],
+          },
+          { status: 422 }
+        )
+      }
 
-    // Create payroll run
-    const payrollRun = await db.payrollRun.create({
-      data: {
-        payrollMonth,
-        fileName: file.name,
-        ruleSetId: activeRules.ruleSetId,
-        ruleSnapshot: JSON.stringify(activeRules.snapshot),
-        status: 'processing',
-        importedBy: 'admin',
-      },
-    })
+      if (parsed.drivers.length === 0) {
+        return NextResponse.json(
+          {
+            error: 'No driver rows found',
+            message: 'The RLVL sheet contains no rider rows with a rider_id. Check the workbook before importing.',
+            warnings: parsed.warnings,
+          },
+          { status: 422 }
+        )
+      }
 
-    // Upsert drivers and calculate results
-    let totalGross = 0, totalPenalties = 0, totalNet = 0, totalVariance = 0, totalTraffic = 0
-    for (const raw of parsed.drivers) {
-      // Pick per-driver banking from RLVL if available; otherwise use aggregate (RLVL or WR fallback)
-      const perDriverBanking = parsed.driverBanking?.[raw.riderId]
-      const beneficiaryName = perDriverBanking?.beneficiaryName || parsed.banking?.beneficiaryName || null
-      const iban = perDriverBanking?.iban || parsed.banking?.iban || null
-      const bankName = perDriverBanking?.bankName || parsed.banking?.bankName || null
+      const warnings = [...parsed.warnings]
+      const riderIds = parsed.drivers.map(d => d.riderId)
+      const incomeMonth = monthKeyFromLabel(payrollMonth)
 
-      const driver = await db.driver.upsert({
-        where: { riderId: raw.riderId },
-        create: {
+      // Everything the calculation needs, fetched in parallel (one round-trip
+      // per data source instead of one per driver).
+      const [
+        activeRules,
+        trafficByRider,
+        manualByRider,
+        customBonuses,
+        customDeductions,
+        previousSameMonthRun,
+        knownDrivers,
+      ] = await Promise.all([
+        getActiveRuleSnapshot(),
+        getAllRiderTrafficDeductions(riderIds),
+        getAllRiderManualAdjustments(riderIds),
+        getActiveCustomBonuses(),
+        getActiveCustomDeductions(),
+        db.payrollRun.findFirst({ where: { payrollMonth }, select: { id: true } }),
+        db.driver.findMany({ where: { riderId: { in: riderIds } } }),
+      ])
+
+      // ===== Sync driver master data (bulk insert + only changed updates) =====
+      const existingByRider = new Map(knownDrivers.map(d => [d.riderId, d]))
+      const driverData = parsed.drivers.map(raw => {
+        const perDriver = parsed.driverBanking?.[raw.riderId]
+        const fallback = existingByRider.get(raw.riderId)
+        return {
           riderId: raw.riderId,
-          name: raw.name,
-          contractName: raw.contractName,
-          vehicleType: raw.vehicleType,
-          beneficiaryName,
-          iban,
-          bankName,
-        },
-        update: {
-          name: raw.name,
-          contractName: raw.contractName,
-          vehicleType: raw.vehicleType,
-          beneficiaryName,
-          iban,
-          bankName,
-        },
-      })
-
-      const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, payrollMonth)
-
-      await db.driverResult.create({
-        data: {
-          payrollRunId: payrollRun.id,
-          driverId: driver.id,
-          riderId: result.riderId,
-          driverName: result.driverName,
-          contractName: result.contractName,
-          payrollMonth: result.payrollMonth,
-          vehicleType: result.vehicleType,
-          inactiveReason: result.inactiveReason,
-          completedOrders: result.completedOrders,
-          uploadedBasicPayment: result.uploadedBasicPayment,
-          uploadedCityPayment: result.uploadedCityPayment,
-          actualWorkingDays: result.actualWorkingDays,
-          fullyWorkingDays: result.fullyWorkingDays,
-          workingHours: result.workingHours,
-          totalMonthlyWorkingHours: result.totalMonthlyWorkingHours,
-          activeRuleSetName: result.activeRuleSetName,
-          salaryDivisorMode: result.salaryDivisorMode,
-          appliedBaseSalary: result.appliedBaseSalary,
-          appliedStdWorkingDays: result.appliedStdWorkingDays,
-          appliedMonthlyTarget: result.appliedMonthlyTarget,
-          appliedDailyTargetRate: result.appliedDailyTargetRate,
-          appliedSalaryPerOrder: result.appliedSalaryPerOrder,
-          appliedBonusPerExtra: result.appliedBonusPerExtra,
-          appliedDeductionPerMissing: result.appliedDeductionPerMissing,
-          trafficDeductionsEnabled: result.trafficDeductionsEnabled,
-          dailyBaseRate: result.dailyBaseRate,
-          adjustedBaseSalary: result.adjustedBaseSalary,
-          adjustedTargetOrders: result.adjustedTargetOrders,
-          selectedTargetThreshold: result.selectedTargetThreshold,
-          baseSalaryEquivalent: result.baseSalaryEquivalent,
-          extraOrders: result.extraOrders,
-          missingOrders: result.missingOrders,
-          bonusAmount: result.bonusAmount,
-          missingOrderDeduction: result.missingOrderDeduction,
-          segmentPayment: result.segmentPayment,
-          penaltiesJson: JSON.stringify(result.penalties),
-          totalOtherPenalties: result.totalOtherPenalties,
-          trafficViolationsDeduction: result.trafficViolationsDeduction,
-          grossSalaryBeforePenalties: result.grossSalaryBeforePenalties,
-          finalNetSalary: result.finalNetSalary,
-          varianceAmount: result.varianceAmount,
-          variancePercentage: result.variancePercentage,
-          varianceStatus: result.varianceStatus,
-          reviewStatus: result.reviewStatus,
-          exceptionFlag: result.exceptionFlag,
-          performanceBand: result.performanceBand,
-        },
-      })
-
-      totalGross += result.grossSalaryBeforePenalties
-      totalPenalties += result.totalOtherPenalties
-      totalNet += result.finalNetSalary
-      totalVariance += Math.abs(result.varianceAmount)
-      totalTraffic += result.trafficViolationsDeduction
-    }
-
-    // Save exceptions for warnings
-    for (const w of parsed.warnings) {
-      await db.payrollException.create({
-        data: {
-          payrollRunId: payrollRun.id,
-          code: 'IMPORT_WARNING',
-          severity: 'warning',
-          source: 'parser',
-          message: w,
-          suggestedAction: 'Review source workbook structure',
-        },
-      })
-    }
-
-    await db.payrollRun.update({
-      where: { id: payrollRun.id },
-      data: {
-        status: 'completed',
-        totalDrivers: parsed.drivers.length,
-        totalGross,
-        totalPenalties,
-        totalNet,
-        totalVariance,
-        totalTraffic,
-      },
-    })
-
-    await db.auditLog.create({
-      data: {
-        action: 'import',
-        entityType: 'payroll_run',
-        entityId: payrollRun.id,
-        ruleSetId: activeRules.ruleSetId,
-        description: `Imported ${file.name} for ${payrollMonth} — ${parsed.drivers.length} drivers`,
-        metadata: JSON.stringify({ fileName: file.name, driverCount: parsed.drivers.length, warnings: parsed.warnings.length }),
-      },
-    })
-
-    // ====== AUTO-SYNC income data + default expenses for the Income vs Expenses module ======
-    // This ensures the dashboard KPIs (Income, Expenses, Net Profit) show immediately after import
-    try {
-      const monthMap: Record<string, string> = {
-        'jan':'01','january':'01','feb':'02','february':'02','mar':'03','march':'03','apr':'04','april':'04',
-        'may':'05','jun':'06','june':'06','jul':'07','july':'07','aug':'08','august':'08',
-        'sep':'09','sept':'09','september':'09','oct':'10','october':'10','nov':'11','november':'11','dec':'12','december':'12',
-      }
-      const labelParts = payrollMonth.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/)
-      let incomeMonth = ''
-      for (let i = 0; i < labelParts.length; i++) {
-        const m = monthMap[labelParts[i]]
-        if (m) {
-          const y = labelParts.find(p => /^\d{4}$/.test(p)) || String(new Date().getFullYear())
-          incomeMonth = `${y}-${m}`
-          break
+          name: raw.name || fallback?.name || `Rider ${raw.riderId}`,
+          contractName: raw.contractName || fallback?.contractName || 'nokhaba_tatweer_ftr',
+          vehicleType: raw.vehicleType || fallback?.vehicleType || 'car',
+          beneficiaryName: perDriver?.beneficiaryName || parsed.banking?.beneficiaryName || fallback?.beneficiaryName || null,
+          iban: perDriver?.iban || parsed.banking?.iban || fallback?.iban || null,
+          bankName: perDriver?.bankName || parsed.banking?.bankName || fallback?.bankName || null,
         }
+      })
+
+      const newDrivers = driverData.filter(d => !existingByRider.has(d.riderId))
+      if (newDrivers.length > 0) {
+        await db.driver.createMany({ data: newDrivers, skipDuplicates: true })
       }
-      if (!incomeMonth) incomeMonth = new Date().toISOString().slice(0, 7)
 
-      const company = 'HungerStation'
-      // Clear existing income records for this month/company
-      await db.incomeRecord.deleteMany({ where: { month: incomeMonth, companyName: company } })
+      // Re-read: gives us ids for new drivers and current values for the rest.
+      const syncedDrivers = await db.driver.findMany({
+        where: { riderId: { in: riderIds } },
+        select: {
+          id: true, riderId: true, name: true, contractName: true, vehicleType: true,
+          beneficiaryName: true, iban: true, bankName: true,
+        },
+      })
+      const driverByRider = new Map(syncedDrivers.map(d => [d.riderId, d]))
 
-      // Create income records from DriverResult data
+      const updateTasks: Array<() => Promise<unknown>> = []
+      for (const d of driverData) {
+        const current = driverByRider.get(d.riderId)
+        if (!current) continue
+        const changed =
+          current.name !== d.name ||
+          current.contractName !== d.contractName ||
+          current.vehicleType !== d.vehicleType ||
+          (current.beneficiaryName ?? null) !== d.beneficiaryName ||
+          (current.iban ?? null) !== d.iban ||
+          (current.bankName ?? null) !== d.bankName
+        if (!changed) continue
+        updateTasks.push(() =>
+          db.driver.update({
+            where: { id: current.id },
+            data: {
+              name: d.name,
+              contractName: d.contractName,
+              vehicleType: d.vehicleType,
+              beneficiaryName: d.beneficiaryName,
+              iban: d.iban,
+              bankName: d.bankName,
+            },
+          })
+        )
+      }
+      // Bounded concurrency: fast on a remote pooler without exhausting it.
+      await runWithConcurrency(updateTasks, 10)
+
+      // ===== Single calculation pass over every driver =====
+      const calculated: Array<{ driverId: string; result: DriverResultCalc; raw: RawDriverData }> = []
       for (const raw of parsed.drivers) {
-        const driver = await db.driver.findUnique({ where: { riderId: raw.riderId } })
-        const dr = await db.driverResult.findFirst({ where: { payrollRunId: payrollRun.id, riderId: raw.riderId } })
-        if (!dr) continue
-        const penalties = JSON.parse(dr.penaltiesJson || '{}')
+        const driver = driverByRider.get(raw.riderId)
+        if (!driver) {
+          warnings.push(`Rider ${raw.riderId} could not be stored and was skipped`)
+          continue
+        }
 
+        raw.trafficViolationsTotal = trafficByRider.get(raw.riderId)?.total ?? 0
+        raw.customBonuses = getBonusesForRider(customBonuses, raw.riderId).map(b => ({
+          name: b.name, nameAr: b.nameAr, amount: b.amount,
+        }))
+        raw.customDeductions = getDeductionsForRider(customDeductions, raw.riderId).map(d => ({
+          name: d.name, nameAr: d.nameAr, amount: d.amount, monthlyDeduction: d.monthlyDeduction,
+        }))
+        raw.manualBonuses = (manualByRider.get(raw.riderId)?.bonuses ?? []).map(b => ({
+          title: b.title, titleAr: b.titleAr, amount: b.amount,
+        }))
+        raw.manualDeductions = (manualByRider.get(raw.riderId)?.deductions ?? []).map(d => ({
+          title: d.title, titleAr: d.titleAr, amount: d.amount,
+        }))
+
+        const result = calculateDriverSalary(raw, activeRules.snapshot, activeRules.ruleSetName, payrollMonth)
+        calculated.push({ driverId: driver.id, result, raw })
+      }
+
+      if (calculated.length === 0) {
+        return NextResponse.json(
+          { error: 'Calculation produced no rows', message: 'No driver records could be matched to the workbook.', warnings },
+          { status: 422 }
+        )
+      }
+
+      const results = calculated.map(entry => entry.result)
+      const totals = sumTotals(results)
+
+      // ===== Derived income records (computed in memory, written in bulk) =====
+      const incomeRows = calculated.map(({ driverId, result }) => {
+        const p = result.penalties
         const incomeData = {
-          driverId: driver?.id || null,
-          driverName: dr.driverName,
-          companyName: company,
-          basicPayment: dr.uploadedBasicPayment || 0,
-          distancePayment: penalties.distance || 0,
-          segmentPayment: penalties.segment || 0,
-          acceptancePenalty: penalties.acceptance || 0,
-          contactPenalty: penalties.contact || 0,
-          stackingDeduction: penalties.stacking || 0,
-          declinedPenalty: penalties.declined || 0,
-          latePenalty: penalties.late || 0,
-          noShowPenalty: penalties.noshow || 0,
-          noShowSpecialPenalty: penalties.noshow_special || 0,
-          dailyAcceptancePenalty: penalties.daily_acceptance || 0,
-          missedDaysPenalty: penalties.missed_days || 0,
-          riderBalance: penalties.rider_balance || 0,
+          driverId,
+          driverName: result.driverName,
+          companyName: COMPANY_NAME,
+          basicPayment: result.uploadedBasicPayment || 0,
+          distancePayment: p.distance || 0,
+          segmentPayment: p.segment || 0,
+          acceptancePenalty: p.acceptance || 0,
+          contactPenalty: p.contact || 0,
+          stackingDeduction: p.stacking || 0,
+          declinedPenalty: p.declined || 0,
+          latePenalty: p.late || 0,
+          noShowPenalty: p.noshow || 0,
+          noShowSpecialPenalty: p.noshow_special || 0,
+          dailyAcceptancePenalty: p.daily_acceptance || 0,
+          missedDaysPenalty: p.missed_days || 0,
+          riderBalance: p.rider_balance || 0,
           customFieldsJson: null,
           sourceFile: file.name,
-          importedBy: 'auto-sync',
+          importedBy: auth.email || 'auto-sync',
         }
-        const { calculateIncome } = await import('@/lib/income-expenses-engine')
         const calc = calculateIncome(incomeData)
-        await db.incomeRecord.create({
-          data: { month: incomeMonth, riderId: raw.riderId, ...incomeData, totalIncome: calc.totalIncome, totalPenalties: calc.totalPenalties },
-        })
-      }
-
-      // Set driver count
-      await db.driverCount.upsert({
-        where: { month: incomeMonth },
-        create: { month: incomeMonth, activeDriverCount: parsed.drivers.length, notes: `Auto-synced from ${payrollMonth}`, confirmedBy: 'auto-sync' },
-        update: { activeDriverCount: parsed.drivers.length, notes: `Auto-synced from ${payrollMonth}`, confirmedBy: 'auto-sync' },
+        return {
+          month: incomeMonth,
+          riderId: result.riderId,
+          ...incomeData,
+          totalIncome: calc.totalIncome,
+          totalPenalties: calc.totalPenalties,
+        }
       })
 
-      // Auto-seed default expenses
-      const DEFAULT_EXPENSES = [
-        { name: 'Iqama', amount: 1000, type: 'per_driver' },
-        { name: 'Petrol', amount: 1200, type: 'per_driver' },
-        { name: 'Car rent', amount: 1500, type: 'per_driver' },
-        { name: 'Internet', amount: 115, type: 'per_driver' },
-        { name: 'Office', amount: 18000, type: 'shared' },
-        { name: 'Accommodation / flat', amount: 12000, type: 'shared' },
-        { name: 'Saudis salary and insurance', amount: 12900, type: 'shared' },
-        { name: 'Electricity and water', amount: 1000, type: 'shared' },
-      ]
-      const existingExp = await db.expense.findMany({ where: { month: incomeMonth }, select: { categoryName: true } })
-      const existingCats = new Set(existingExp.map(e => e.categoryName))
-      const allCats = await db.expenseCategory.findMany()
-      for (const def of DEFAULT_EXPENSES) {
-        if (!existingCats.has(def.name)) {
-          let cat = allCats.find(c => c.name === def.name)
-          if (!cat) cat = await db.expenseCategory.create({ data: { name: def.name, defaultAmount: def.amount, allocationType: def.type } })
-          await db.expense.create({ data: { month: incomeMonth, categoryId: cat.id, categoryName: cat.name, amount: def.amount, allocationType: def.type, notes: 'Auto-seeded during import', createdBy: 'auto-sync' } })
+      // ===== One atomic write for the whole payroll run =====
+      const payrollRunId = await db.$transaction(async tx => {
+        const run = await tx.payrollRun.create({
+          data: {
+            payrollMonth,
+            fileName: file.name,
+            ruleSetId: activeRules.ruleSetId,
+            ruleSnapshot: JSON.stringify(activeRules.snapshot),
+            status: 'processing',
+            importedBy: auth.email || 'import',
+          },
+          select: { id: true },
+        })
+
+        // One bulk insert per 200 drivers instead of one INSERT per driver.
+        const rows = calculated.map(entry => driverResultCreateData(run.id, entry.driverId, entry.result))
+        for (const batch of chunk(rows, 200)) {
+          await tx.driverResult.createMany({ data: batch })
+        }
+
+        const exceptions = [
+          ...warnings.map(w => ({
+            payrollRunId: run.id,
+            code: 'IMPORT_WARNING',
+            severity: 'warning',
+            source: 'parser',
+            message: w,
+            suggestedAction: 'Review source workbook structure',
+          })),
+          ...results.flatMap(result => driverExceptionRows(run.id, result)),
+        ]
+        for (const batch of chunk(exceptions, 500)) {
+          await tx.payrollException.createMany({ data: batch })
+        }
+
+        await tx.payrollRun.update({
+          where: { id: run.id },
+          data: {
+            status: 'completed',
+            totalDrivers: results.length,
+            ...totals,
+          },
+        })
+
+        await tx.auditLog.create({
+          data: {
+            action: 'import',
+            entityType: 'payroll_run',
+            entityId: run.id,
+            ruleSetId: activeRules.ruleSetId,
+            performedBy: auth.email || 'import',
+            description: `Imported ${file.name} for ${payrollMonth} — ${results.length} drivers`,
+            metadata: JSON.stringify({
+              fileName: file.name,
+              driverCount: results.length,
+              warnings: warnings.length,
+              ruleSetName: activeRules.ruleSetName,
+              ruleCount: activeRules.ruleCount,
+              incomeMonth,
+            }),
+          },
+        })
+
+        return run.id
+      }, { maxWait: 15_000, timeout: 90_000 })
+
+      // ===== Archive the original workbook (kept until explicitly deleted) =====
+      let uploadedFileId: string | null = null
+      try {
+        const archived = await db.uploadedFile.create({
+          data: {
+            fileName: file.name,
+            mimeType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            size: buffer.length,
+            payrollMonth,
+            driverCount: results.length,
+            uploadedBy: auth.email || 'import',
+            payrollRunId,
+            data: buffer,
+          },
+          select: { id: true },
+        })
+        uploadedFileId = archived.id
+      } catch (archiveErr) {
+        // Never fail an import because the archive could not be written.
+        console.error('Workbook archive failed (non-fatal):', archiveErr)
+        warnings.push('Payroll calculated, but the original workbook could not be archived to Upload History. Check the server log.')
+      }
+
+      // ===== Auto-sync the Income vs Expenses module (non-fatal) =====
+      let incomeSync: { month: string; records: number } | null = null
+      try {
+        await db.$transaction(async tx => {
+          await tx.incomeRecord.deleteMany({ where: { month: incomeMonth, companyName: COMPANY_NAME } })
+          for (const batch of chunk(incomeRows, 200)) {
+            await tx.incomeRecord.createMany({ data: batch, skipDuplicates: true })
+          }
+
+          await tx.driverCount.upsert({
+            where: { month: incomeMonth },
+            create: {
+              month: incomeMonth,
+              activeDriverCount: results.length,
+              notes: `Auto-synced from ${payrollMonth}`,
+              confirmedBy: auth.email || 'auto-sync',
+            },
+            update: {
+              activeDriverCount: results.length,
+              notes: `Auto-synced from ${payrollMonth}`,
+              confirmedBy: auth.email || 'auto-sync',
+            },
+          })
+
+          const existingExpenses = await tx.expense.findMany({
+            where: { month: incomeMonth },
+            select: { categoryName: true },
+          })
+          const existingCategories = new Set(existingExpenses.map(e => e.categoryName))
+          const newExpenseRows: Array<{
+            month: string
+            categoryId: string
+            categoryName: string
+            amount: number
+            allocationType: string
+            notes: string
+            createdBy: string
+          }> = []
+
+          for (const def of DEFAULT_EXPENSES) {
+            if (existingCategories.has(def.name)) continue
+            const category = await tx.expenseCategory.upsert({
+              where: { name: def.name },
+              create: { name: def.name, defaultAmount: def.amount, allocationType: def.type },
+              update: {},
+              select: { id: true, name: true },
+            })
+            newExpenseRows.push({
+              month: incomeMonth,
+              categoryId: category.id,
+              categoryName: category.name,
+              amount: def.amount,
+              allocationType: def.type,
+              notes: 'Auto-seeded during import',
+              createdBy: auth.email || 'auto-sync',
+            })
+          }
+          if (newExpenseRows.length > 0) {
+            await tx.expense.createMany({ data: newExpenseRows })
+          }
+        }, { maxWait: 15_000, timeout: 60_000 })
+        incomeSync = { month: incomeMonth, records: incomeRows.length }
+      } catch (syncErr) {
+        console.error('Auto-sync income/expenses failed (non-fatal):', syncErr)
+        warnings.push('Payroll was imported, but the Income vs Expenses auto-sync failed. Use that module to sync manually.')
+      }
+
+      // ===== Installments advance once per NEW payroll month =====
+      // Re-uploading the same month or recalculating must never charge an
+      // installment twice.
+      if (!previousSameMonthRun) {
+        try {
+          await processCustomDeductionInstallments()
+          await processInstallmentDeductions(riderIds)
+        } catch (installmentErr) {
+          console.error('Installment processing failed (non-fatal):', installmentErr)
+          warnings.push('Installment progress could not be advanced for this month.')
         }
       }
-      console.log(`Auto-synced ${parsed.drivers.length} income records + default expenses for ${incomeMonth}`)
-    } catch (syncErr) {
-      console.error('Auto-sync income/expenses failed (non-fatal):', syncErr)
-    }
 
-    return NextResponse.json({
-      success: true,
-      payrollRunId: payrollRun.id,
-      driverCount: parsed.drivers.length,
-      warnings: parsed.warnings,
-      totals: { totalGross, totalPenalties, totalNet, totalVariance, totalTraffic },
-    })
-  } catch (e: any) {
-    console.error('Import failed:', e)
-    return NextResponse.json({ error: 'Import failed', message: e.message }, { status: 500 })
-  }
+      return NextResponse.json({
+        success: true,
+        payrollRunId,
+        uploadedFileId,
+        driverCount: results.length,
+        warnings,
+        totals,
+        incomeSync,
+        rules: {
+          ruleSetName: activeRules.ruleSetName,
+          ruleCount: activeRules.ruleCount,
+          autoInitialized: activeRules.createdRuleSet || activeRules.addedRuleCount > 0,
+          addedRuleCount: activeRules.addedRuleCount,
+        },
+        installmentsAdvanced: !previousSameMonthRun,
+      })
+    } catch (e: any) {
+      console.error('Import failed:', e)
+      return NextResponse.json(
+        {
+          error: 'Import failed',
+          message: e?.message || 'Unexpected error while importing the workbook.',
+        },
+        { status: 500 }
+      )
+    }
+  }) as Promise<NextResponse>
 }

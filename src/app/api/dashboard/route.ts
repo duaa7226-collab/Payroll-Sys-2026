@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  let incomeExpenseSummary = null
+  let incomeExpenseSummary: any = null
   if (monthKey) {
     try {
       const activeDriverCount = await getActiveDriverCount(monthKey)
@@ -152,10 +152,10 @@ export async function GET(req: NextRequest) {
   }
 
   const bandCounts: Record<string, number> = { top: 0, high: 0, average: 0, low: 0, bottom: 0 }
-  for (const r of results) bandCounts[r.performanceBand] += 1
+  for (const r of results) bandCounts[r.performanceBand] = (bandCounts[r.performanceBand] ?? 0) + 1
 
   const varianceCounts: Record<string, number> = { ok: 0, minor: 0, major: 0, review: 0 }
-  for (const r of results) varianceCounts[r.varianceStatus] += 1
+  for (const r of results) varianceCounts[r.varianceStatus] = (varianceCounts[r.varianceStatus] ?? 0) + 1
 
   const ordersVsTarget = results.map(r => ({
     name: r.driverName,
@@ -171,17 +171,31 @@ export async function GET(req: NextRequest) {
     net: r.finalNetSalary,
   }))
 
+  // Report the rules the RUN was calculated with (its immutable snapshot), not
+  // the currently active set — otherwise the header disagrees with the results
+  // whenever an administrator edits rules without recalculating.
   const activeRules = await getActiveRuleSnapshot()
+  let runRules: Record<string, any> = activeRules.snapshot as any
+  try {
+    const parsedSnapshot = JSON.parse(payrollRun.ruleSnapshot || '{}')
+    if (parsedSnapshot && typeof parsedSnapshot === 'object' && Object.keys(parsedSnapshot).length > 0) {
+      runRules = parsedSnapshot
+    }
+  } catch {}
+
+  const stdDays = Number(runRules.standard_working_days) || 0
+  const monthlyTarget = Number(runRules.monthly_target_orders) || 0
+  const monthlyBase = Number(runRules.monthly_base_salary) || 0
   const ruleSummary = {
-    ruleSetName: activeRules.ruleSetName,
-    salaryMode: activeRules.snapshot.salary_mode,
-    monthlyBaseSalary: activeRules.snapshot.monthly_base_salary,
-    standardWorkingDays: activeRules.snapshot.standard_working_days,
-    monthlyTargetOrders: activeRules.snapshot.monthly_target_orders,
-    dailyTargetRate: (activeRules.snapshot.monthly_target_orders as number) / (activeRules.snapshot.standard_working_days as number),
-    salaryPerOrderRate: (activeRules.snapshot.monthly_base_salary as number) / (activeRules.snapshot.monthly_target_orders as number),
-    bonusPerExtraOrder: activeRules.snapshot.bonus_per_extra_order,
-    deductionPerMissingOrder: activeRules.snapshot.deduction_per_missing_order,
+    ruleSetName: payrollRun.ruleSet?.name || activeRules.ruleSetName,
+    salaryMode: runRules.salary_mode,
+    monthlyBaseSalary: runRules.monthly_base_salary,
+    standardWorkingDays: runRules.standard_working_days,
+    monthlyTargetOrders: runRules.monthly_target_orders,
+    dailyTargetRate: stdDays > 0 ? monthlyTarget / stdDays : 0,
+    salaryPerOrderRate: monthlyTarget > 0 ? monthlyBase / monthlyTarget : 0,
+    bonusPerExtraOrder: runRules.bonus_per_extra_order,
+    deductionPerMissingOrder: runRules.deduction_per_missing_order,
   }
 
   const allRuns = await db.payrollRun.findMany({

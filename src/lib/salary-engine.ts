@@ -29,8 +29,11 @@ export interface RawDriverData {
   trafficViolationsTotal: number
   // Custom bonuses (from Rules Control Center)
   customBonuses: Array<{ name: string; nameAr: string | null; amount: number }>
-  // Custom deductions (from Rules Control Center)
-  customDeductions: Array<{ name: string; nameAr: string | null; amount: number }>
+  // Custom deductions (from Rules Control Center) — installment-aware
+  customDeductions: Array<{ name: string; nameAr: string | null; amount: number; monthlyDeduction?: number }>
+  // Manual adjustments (Manual Adjustments module) — also on the payslip
+  manualBonuses?: Array<{ title: string; titleAr: string | null; amount: number }>
+  manualDeductions?: Array<{ title: string; titleAr: string | null; amount: number }>
 }
 
 export interface DriverResultCalc {
@@ -75,8 +78,13 @@ export interface DriverResultCalc {
   customBonuses: Array<{ name: string; nameAr: string | null; amount: number }>
   customBonusTotal: number
   // Custom deductions (from Rules Control Center)
-  customDeductions: Array<{ name: string; nameAr: string | null; amount: number }>
+  customDeductions: Array<{ name: string; nameAr: string | null; amount: number; monthlyDeduction?: number }>
   customDeductionTotal: number
+  // Manual adjustments
+  manualBonuses: Array<{ title: string; titleAr: string | null; amount: number }>
+  manualBonusTotal: number
+  manualDeductions: Array<{ title: string; titleAr: string | null; amount: number }>
+  manualDeductionTotal: number
   // Penalties
   penalties: Record<string, number>
   totalOtherPenalties: number
@@ -210,7 +218,13 @@ export function calculateDriverSalary(
   // ====== Custom deductions (from Rules Control Center — installment-aware) ======
   const customDeductions = raw.customDeductions || []
   // For installment deductions, use monthlyDeduction; for one-time, use full amount
-  const customDeductionTotal = customDeductions.reduce((a, b) => a + (b.monthlyDeduction || b.amount), 0)
+  const customDeductionTotal = customDeductions.reduce((a, b) => a + (b.monthlyDeduction ?? b.amount), 0)
+
+  // ====== Manual adjustments (bonuses add to gross, deductions reduce net) ======
+  const manualBonuses = raw.manualBonuses || []
+  const manualBonusTotal = manualBonuses.reduce((a, b) => a + b.amount, 0)
+  const manualDeductions = raw.manualDeductions || []
+  const manualDeductionTotal = manualDeductions.reduce((a, b) => a + b.amount, 0)
 
   // ====== Excel-matching calculation (Salary_Calculation sheet logic) ======
   // Excel formula:
@@ -227,14 +241,14 @@ export function calculateDriverSalary(
   const earnedSalary = ordersCountedAtBaseRate * salaryPerOrder
 
   // Gross Before Deductions = MAX(Earned Salary - Missing-Order Deduction, 0) + Bonus + Custom Bonuses
-  let grossBeforePenalties = Math.max(earnedSalary - missingOrderDeduction, 0) + bonusAmount + customBonusTotal
+  let grossBeforePenalties = Math.max(earnedSalary - missingOrderDeduction, 0) + bonusAmount + customBonusTotal + manualBonusTotal
 
   // days_prorated_mode fallback (legacy — rarely used)
   if (salaryMode === 'days_prorated_mode') {
     if (raw.completedOrders >= selectedTargetThreshold) {
-      grossBeforePenalties = adjustedBaseSalary + bonusAmount + segmentPayment + customBonusTotal
+      grossBeforePenalties = adjustedBaseSalary + bonusAmount + segmentPayment + customBonusTotal + manualBonusTotal
     } else {
-      grossBeforePenalties = Math.max(adjustedBaseSalary - missingOrderDeduction, 0) + segmentPayment + customBonusTotal
+      grossBeforePenalties = Math.max(adjustedBaseSalary - missingOrderDeduction, 0) + segmentPayment + customBonusTotal + manualBonusTotal
     }
   }
 
@@ -294,7 +308,7 @@ export function calculateDriverSalary(
   const trafficViolationsDeduction = trafficEnabled ? (raw.trafficViolationsTotal || 0) : 0
 
   // ====== Final net salary ======
-  let totalDeductions = totalOtherPenalties + trafficViolationsDeduction + customDeductionTotal
+  let totalDeductions = totalOtherPenalties + trafficViolationsDeduction + customDeductionTotal + manualDeductionTotal
   if (deductionCap > 0 && totalDeductions > deductionCap) {
     totalDeductions = deductionCap
   }
@@ -371,6 +385,10 @@ export function calculateDriverSalary(
     customBonusTotal,
     customDeductions,
     customDeductionTotal,
+    manualBonuses,
+    manualBonusTotal,
+    manualDeductions,
+    manualDeductionTotal,
     penalties,
     totalOtherPenalties,
     trafficViolationsDeduction,

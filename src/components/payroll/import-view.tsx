@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import {
   Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X, Loader2,
-  FileText, Calendar, FileCheck2
+  FileText, Calendar, FileCheck2, ShieldCheck
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -228,6 +228,12 @@ export function ImportView({ onImported }: { onImported: (runId: string) => void
                       <Stat label="Total Penalties" value={`SAR ${result.totals.totalPenalties.toFixed(2)}`} accent="rose" />
                       <Stat label="Total Variance" value={`SAR ${result.totals.totalVariance.toFixed(2)}`} accent="amber" />
                     </div>
+                    {result.rules?.autoInitialized && (
+                      <div className="mt-2 rounded border border-border bg-card p-2 text-xs text-muted-foreground">
+                        <ShieldCheck className="inline h-3 w-3 mr-1 text-emerald-600" />
+                        Rules Control Center initialized with all {result.rules.ruleCount} rules ({result.rules.ruleSetName}). Review or tune them before the next run.
+                      </div>
+                    )}
                     {result.warnings.length > 0 && (
                       <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
                         <AlertCircle className="inline h-3 w-3 mr-1" />

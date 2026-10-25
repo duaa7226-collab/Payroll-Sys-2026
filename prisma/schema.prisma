@@ -49,6 +49,8 @@ model PayrollRuleSet {
   contractOverrides ContractOverride[]
   payrollRuns       PayrollRun[]
   auditLogs         AuditLog[]
+
+  @@index([status, activatedAt(sort: Desc)])
 }
 
 model PayrollRuleValue {
@@ -153,6 +155,34 @@ model PayrollRun {
   ruleSet         PayrollRuleSet @relation(fields: [ruleSetId], references: [id])
   results         DriverResult[]
   exceptions      PayrollException[]
+  uploadedFile    UploadedFile?
+
+  @@index([createdAt(sort: Desc)])
+  @@index([payrollMonth])
+}
+
+// ============================================================
+// UPLOAD HISTORY — the original workbook of every import, kept in
+// Supabase until a user explicitly deletes it. Deleting a payroll run
+// (or clearing all payroll data) keeps the archive: payrollRunId is
+// detached with ON DELETE SET NULL.
+// ============================================================
+model UploadedFile {
+  id           String   @id @default(cuid())
+  fileName     String
+  mimeType     String   @default("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  size         Int
+  payrollMonth String
+  driverCount  Int      @default(0)
+  uploadedBy   String   @default("admin")
+  payrollRunId String?  @unique
+  data         Bytes
+  createdAt    DateTime @default(now())
+
+  payrollRun   PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([payrollMonth])
 }
 
 model DriverResult {
@@ -212,6 +242,8 @@ model DriverResult {
   driver      Driver     @relation(fields: [driverId], references: [id])
 
   @@unique([payrollRunId, driverId])
+  @@index([riderId])
+  @@index([driverId])
 }
 
 model PayrollException {
@@ -226,6 +258,8 @@ model PayrollException {
   reviewStatus  String   @default("open") // open | resolved | ignored
   createdAt     DateTime @default(now())
   payrollRun    PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+
+  @@index([payrollRunId])
 }
 
 // ============================================================
@@ -249,6 +283,9 @@ model TrafficViolation {
   installmentStatus       String   @default("none") // none | active | completed
   createdAt   DateTime @default(now())
   driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, status])
+  @@index([driverId])
 }
 
 // ============================================================
@@ -268,6 +305,9 @@ model ManualAdjustment {
   payrollRunId String?
   createdAt   DateTime @default(now())
   driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, status])
+  @@index([driverId])
 }
 
 // ============================================================
@@ -285,6 +325,8 @@ model CustomBonus {
   targetRiderIds  String?  // JSON array of rider IDs when applyToAll=false
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([status])
 }
 
 // ============================================================
@@ -306,6 +348,9 @@ model CustomDeduction {
   installmentStatus       String   @default("none") // none | active | completed
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+
+  @@index([status])
+  @@index([installmentEnabled, installmentStatus])
 }
 
 // ============================================================
@@ -322,6 +367,9 @@ model AuditLog {
   performedBy String   @default("admin")
   createdAt   DateTime @default(now())
   ruleSet     PayrollRuleSet? @relation(fields: [ruleSetId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
 }
 
 // ============================================================
@@ -366,6 +414,7 @@ model IncomeRecord {
   @@unique([month, riderId, companyName])
   @@index([month])
   @@index([companyName])
+  @@index([month, companyName])
 }
 
 // Expense category — user can add new ones
@@ -401,6 +450,7 @@ model Expense {
 
   @@index([month])
   @@index([categoryId])
+  @@index([month, allocationType])
 }
 
 // Monthly driver count — used for shared expense allocation

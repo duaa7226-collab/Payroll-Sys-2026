@@ -1,4 +1,5 @@
 import { db } from './db'
+import { parseStringArray } from './utils'
 
 export interface CustomBonusItem {
   id: string
@@ -15,7 +16,7 @@ export async function getActiveCustomBonuses(): Promise<CustomBonusItem[]> {
   return bonuses.map(b => ({
     id: b.id, name: b.name, nameAr: b.nameAr, amount: b.amount, type: b.type,
     applyToAll: b.applyToAll,
-    targetRiderIds: b.targetRiderIds ? JSON.parse(b.targetRiderIds) : [],
+    targetRiderIds: parseStringArray(b.targetRiderIds),
   }))
 }
 

@@ -18,6 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from '@/components/ui/dialog'
 import { safeFetchJson } from '@/lib/safe-fetch'
+import { recalculateLatestRun } from '@/lib/recalculate-client'
 import { toast } from 'sonner'
 
 const PRESET_TYPES = [
@@ -74,14 +75,9 @@ export function ManualAdjustmentsView() {
     if (resp.ok) {
       toast.success('Deleted — recalculating payroll...')
       reload()
-      // Trigger immediate recalculation
-      safeFetchJson('/api/dashboard', null).then(d => {
-        if (d?.run?.id) {
-          fetch(`/api/recalculate?runId=${d.run.id}`, { method: 'POST' })
-            .then(() => toast.success('Payroll recalculated'))
-            .catch(() => toast.error('Recalculation failed'))
-        }
-      })
+      const recalc = await recalculateLatestRun()
+      if (recalc.ok) toast.success('Payroll recalculated')
+      else toast.warning(recalc.message || 'Adjustment deleted, but payroll could not be recalculated')
     }
     else toast.error('Delete failed')
   }
@@ -280,14 +276,9 @@ function EditDialog({ open, onOpenChange, adjustment, drivers, onSaved }: {
         toast.success(adjustment ? 'Updated — recalculating...' : 'Created — recalculating...')
         onOpenChange(false)
         onSaved()
-        // Trigger immediate recalculation
-        safeFetchJson('/api/dashboard', null).then(d => {
-          if (d?.run?.id) {
-            fetch(`/api/recalculate?runId=${d.run.id}`, { method: 'POST' })
-              .then(() => toast.success('Payroll recalculated'))
-              .catch(() => toast.error('Recalculation failed'))
-          }
-        })
+        const recalc = await recalculateLatestRun()
+        if (recalc.ok) toast.success('Payroll recalculated')
+        else toast.warning(recalc.message || 'Adjustment saved, but payroll could not be recalculated')
       }
       else { const err = await resp.json().catch(() => ({})); toast.error(err.error || 'Save failed') }
     } finally { setSaving(false) }
